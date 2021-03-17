@@ -122,6 +122,12 @@ struct xnthread {
 	 */
 	int wprio;
 
+	/**
+	 * The next deadline, usefull only in EDF scheduling 
+	 */
+
+	xnticks_t next_deadline;
+
 	int lock_count;	/** Scheduler lock count. */
 
 	/**

@@ -186,6 +186,8 @@ int __xnthread_init(struct xnthread *thread,
 	thread->wprio = XNSCHED_IDLE_PRIO;
 	thread->cprio = XNSCHED_IDLE_PRIO;
 	thread->bprio = XNSCHED_IDLE_PRIO;
+	//TODO BASTIEN prévoir une valeur ici
+	thread->next_deadline = 0;
 	thread->lock_count = 0;
 	thread->rrperiod = XN_INFINITE;
 	thread->wchan = NULL;
@@ -218,6 +220,7 @@ int __xnthread_init(struct xnthread *thread,
 	if (ret)
 		goto err_out;
 
+	//TODO BASTIEN probablement des changements uniquement ici
 	ret = xnsched_set_policy(thread, sched_class, sched_param);
 	if (ret)
 		goto err_out;
@@ -553,6 +556,7 @@ int xnthread_init(struct xnthread *thread,
 
 	sched = xnsched_struct(cpumask_first(&affinity));
 
+	//TODO BASTIEN à priori les seuls changements sont à faire ici
 	ret = __xnthread_init(thread, attr, sched, sched_class, sched_param);
 	if (ret)
 		return ret;

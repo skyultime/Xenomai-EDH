@@ -34,6 +34,7 @@ struct xnsched_weak_param {
 
 struct xnsched_rt_param {
 	int prio;
+	xnticks_t deadline;
 };
 
 struct xnsched_tp_param {

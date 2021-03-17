@@ -22,6 +22,7 @@
 #include <linux/signal.h>
 #include <linux/jiffies.h>
 #include <linux/err.h>
+#include <linux/kernel.h>
 #include "internal.h"
 #include "thread.h"
 #include "sched.h"
@@ -363,6 +364,7 @@ static int pthread_create(struct cobalt_thread **thread_p,
 		return -EAGAIN;
 
 	tslice = cobalt_time_slice;
+	//TODO BASTIEN on établit la classe du scheduler en fonction de param_ex et surtout de policy
 	sched_class = cobalt_sched_policy_param(&param, policy,
 						param_ex, &tslice);
 	if (sched_class == NULL) {

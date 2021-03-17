@@ -46,8 +46,16 @@ cobalt_sched_policy_param(union xnsched_policy_param *param,
 		prio = -prio;
 		policy = SCHED_WEAK;
 	}
-	sched_class = &xnsched_class_rt;
+	//TODO BASTIEN vérifier que tout marche bien
+	if(deadline){
+		sched_class = &xnsched_class_dyna;
+	} else {
+		sched_class = &xnsched_class_rt;
+	}
 	param->rt.prio = prio;
+	param->rt.deadline = deadline;
+
+	//TODO BASTIEN toujours des doutes sur la policy. Il va falloir trouver un moyen de print
 
 	switch (policy) {
 	case SCHED_NORMAL:
@@ -90,8 +98,7 @@ cobalt_sched_policy_param(union xnsched_policy_param *param,
 			return NULL;
 		break;
 	case SCHED_DEADLINE:
-		if(deadline < rt_timer_read())
-			return NULL;
+		//TODO BASTIEN vérifier que la deadline est dans le futur
 		break;
 #ifdef CONFIG_XENO_OPT_SCHED_SPORADIC
 	case SCHED_SPORADIC:
