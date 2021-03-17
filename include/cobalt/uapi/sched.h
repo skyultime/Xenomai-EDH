@@ -15,6 +15,7 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
  */
+#include "/usr/include/asm-generic/int-ll64.h"
 #ifndef _COBALT_UAPI_SCHED_H
 #define _COBALT_UAPI_SCHED_H
 
@@ -89,6 +90,9 @@ enum {
 	sched_quota_set,
 	sched_quota_get,
 };
+struct __sched_deadline_param {
+	__u64 sched_deadline;
+};
 
 struct __sched_config_quota {
 	int op;
@@ -125,6 +129,7 @@ struct sched_param_ex {
 		struct __sched_rr_param rr;
 		struct __sched_tp_param tp;
 		struct __sched_quota_param quota;
+		struct __sched_deadline_param deadline;
 	} sched_u;
 };
 

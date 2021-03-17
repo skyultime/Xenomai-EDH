@@ -29,9 +29,11 @@ cobalt_sched_policy_param(union xnsched_policy_param *param,
 {
 	struct xnsched_class *sched_class;
 	int prio, policy;
+	xnticks_t deadline;
 	xnticks_t tslice;
 
 	prio = param_ex->sched_priority;
+	deadline = param_ex->sched_u.deadline.sched_deadline;
 	tslice = XN_INFINITE;
 	policy = u_policy;
 
@@ -85,6 +87,10 @@ cobalt_sched_policy_param(union xnsched_policy_param *param,
 	case SCHED_COBALT:
 		if (prio < XNSCHED_CORE_MIN_PRIO ||
 		    prio > XNSCHED_CORE_MAX_PRIO)
+			return NULL;
+		break;
+	case SCHED_DEADLINE:
+		if(deadline < rt_timer_read())
 			return NULL;
 		break;
 #ifdef CONFIG_XENO_OPT_SCHED_SPORADIC

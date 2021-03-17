@@ -39,9 +39,12 @@ int pthread_attr_init_ex(pthread_attr_ex_t *attr_ex)
 	/* Merge in the default standard attribute set. */
 	__COBALT(pthread_attr_init)(&attr_ex->std);
 	pthread_attr_getschedpolicy(&attr_ex->std, &policy);
+	printf("policy in attr.c : %d\n", policy);
 	attr_ex->nonstd.sched_policy = policy;
 	pthread_attr_getschedparam(&attr_ex->std, &param);
+	//TODO BASTIEN probleme ici
 	attr_ex->nonstd.sched_param.sched_priority = param.sched_priority;
+	//attr_ex->nonstd.sched_param.sched_u.deadline.sched_deadline = 
 
 	return 0;
 }

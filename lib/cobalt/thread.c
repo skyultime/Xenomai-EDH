@@ -767,6 +767,7 @@ COBALT_IMPL(int, pthread_getschedparam, (pthread_t thread,
  *
  * @apitags{thread-unrestricted}
  */
+//TODO BASTIEN verifier ici , difficile de comprendre
 int pthread_getschedparam_ex(pthread_t thread,
 			     int *__restrict__ policy_r,
 			     struct sched_param_ex *__restrict__ param_ex)

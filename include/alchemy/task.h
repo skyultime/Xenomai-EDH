@@ -101,6 +101,12 @@ CURRENT_DECL(int, rt_task_create(RT_TASK *task,
 				 int prio,
 				 int mode));
 
+CURRENT_DECL(int, rt_task_create_dyna(RT_TASK *task,
+				 const char *name,
+				 int stksize,
+				 xnticks_t next_deadline,
+				 int mode));
+
 int rt_task_delete(RT_TASK *task);
 
 int rt_task_set_affinity(RT_TASK *task,
@@ -112,6 +118,11 @@ int rt_task_start(RT_TASK *task,
 
 CURRENT_DECL(int, rt_task_spawn(RT_TASK *task, const char *name,
 				int stksize, int prio, int mode,
+				void (*entry)(void *arg),
+				void *arg));
+
+CURRENT_DECL(int, rt_task_spawn_dyna(RT_TASK *task, const char *name,
+				int stksize, xnticks_t next_deadline, int mode,
 				void (*entry)(void *arg),
 				void *arg));
 
