@@ -141,7 +141,6 @@ int pthread_create_ex(pthread_t *ptid_r,
 	if (attr_ex == NULL)
 		attr_ex = &default_attr_ex;
 
-	//TODO BASTIEN vérifier
 	pthread_getschedparam_ex(pthread_self(), &iargs.policy, &iargs.param_ex);
 	iargs.parent_prio = iargs.param_ex.sched_priority;
 	memcpy(&attr, &attr_ex->std, sizeof(attr));
@@ -150,7 +149,6 @@ int pthread_create_ex(pthread_t *ptid_r,
 	if (inherit == PTHREAD_EXPLICIT_SCHED) {
 		pthread_attr_getschedpolicy_ex(attr_ex, &iargs.policy);
 		pthread_attr_getschedparam_ex(attr_ex, &iargs.param_ex);
-		//TODO BASTIEN si l'on passe toujours par là, pas de problème
 		printf("inherit == PTHREAD_EXPLICIT_SCHED");
 	}
 

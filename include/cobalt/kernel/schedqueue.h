@@ -79,8 +79,10 @@ typedef struct list_head xnsched_queue_t;
 
 #define xnsched_initq(__q)			INIT_LIST_HEAD(__q)
 #define xnsched_emptyq_p(__q)			list_empty(__q)
-#define xnsched_addq(__q, __t)			list_add_prilf(__t, __q, cprio, rlink)
-#define xnsched_addq_tail(__q, __t)		list_add_priff(__t, __q, cprio, rlink)
+#define xnsched_addq(__q, __t)				list_add_prilf(__t, __q, cprio, rlink)
+#define xnsched_addq_tail(__q, __t)			list_add_priff(__t, __q, cprio, rlink)
+#define xnsched_dyna_addq(__q, __t)			list_add_prilf_bis(__t, __q, next_deadline, rlink)
+#define xnsched_dyna_addq_tail(__q, __t)	list_add_priff_bis(__t, __q, next_deadline, rlink)
 #define xnsched_delq(__q, __t)			(void)(__q), list_del(&(__t)->rlink)
 #define xnsched_getq(__q)							\
 	({									\

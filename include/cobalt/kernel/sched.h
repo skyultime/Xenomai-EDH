@@ -52,6 +52,10 @@ struct xnsched_rt {
 	xnsched_queue_t runnable;	/*!< Runnable thread queue. */
 };
 
+struct xnsched_dyna {
+	xnsched_queue_t runnable;
+};
+
 /*!
  * \brief Scheduling information structure.
  */
@@ -71,6 +75,7 @@ struct xnsched {
 #endif
 	/*!< Context of built-in real-time class. */
 	struct xnsched_rt rt;
+	struct xnsched_dyna dyna;
 #ifdef CONFIG_XENO_OPT_SCHED_WEAK
 	/*!< Context of weak scheduling class. */
 	struct xnsched_weak weak;
@@ -352,6 +357,7 @@ bool xnsched_set_effective_priority(struct xnthread *thread,
 
 #include <cobalt/kernel/sched-idle.h>
 #include <cobalt/kernel/sched-rt.h>
+#include <cobalt/kernel/sched-dyna.h>
 
 int xnsched_init_proc(void);
 
@@ -417,7 +423,6 @@ static inline int xnsched_init_thread(struct xnthread *thread)
 	int ret = 0;
 
 	xnsched_idle_init_thread(thread);
-	xnsched_rt_init_thread(thread);
 
 #ifdef CONFIG_XENO_OPT_SCHED_TP
 	ret = xnsched_tp_init_thread(thread);
@@ -582,22 +587,33 @@ static inline void xnsched_kick(struct xnthread *thread)
 static inline void xnsched_enqueue(struct xnthread *thread)
 {
 	struct xnsched_class *sched_class = thread->sched_class;
-
-	if (sched_class != &xnsched_class_idle)
+	if(sched_class == &xnsched_class_dyna){
+		__xnsched_dyna_enqueue(thread);
+	}
+	else if(sched_class != &xnsched_class_idle){
 		__xnsched_rt_enqueue(thread);
+	}
 }
 
 static inline void xnsched_dequeue(struct xnthread *thread)
 {
 	struct xnsched_class *sched_class = thread->sched_class;
 
-	if (sched_class != &xnsched_class_idle)
+	if(sched_class == &xnsched_class_dyna){
+		__xnsched_dyna_dequeue(thread);
+	}	
+	else if (sched_class != &xnsched_class_idle){
 		__xnsched_rt_dequeue(thread);
+	}
+		
 }
 
 static inline void xnsched_requeue(struct xnthread *thread)
 {
 	struct xnsched_class *sched_class = thread->sched_class;
+
+	if(sched_class == &xnsched_class_dyna)
+		__xnsched_dyna_requeue(thread);
 
 	if (sched_class != &xnsched_class_idle)
 		__xnsched_rt_requeue(thread);
@@ -610,6 +626,9 @@ static inline bool xnsched_setparam(struct xnthread *thread,
 
 	if (sched_class == &xnsched_class_idle)
 		return __xnsched_idle_setparam(thread, p);
+	
+	if(sched_class == &xnsched_class_dyna)
+		return __xnsched_dyna_setparam(thread,p);
 
 	return __xnsched_rt_setparam(thread, p);
 }
@@ -621,6 +640,8 @@ static inline void xnsched_getparam(struct xnthread *thread,
 
 	if (sched_class == &xnsched_class_idle)
 		__xnsched_idle_getparam(thread, p);
+	else if (sched_class == &xnsched_class_dyna)
+		__xnsched_dyna_getparam(thread, p);
 	else
 		__xnsched_rt_getparam(thread, p);
 }

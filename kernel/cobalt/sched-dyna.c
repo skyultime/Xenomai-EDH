@@ -18,35 +18,35 @@
  */
 #include <cobalt/kernel/sched.h>
 
-static void xnsched_rt_init(struct xnsched *sched)
+static void xnsched_dyna_init(struct xnsched *sched)
 {
 	xnsched_initq(&sched->rt.runnable);
 }
 
-static void xnsched_rt_requeue(struct xnthread *thread)
+static void xnsched_dyna_requeue(struct xnthread *thread)
 {
 	/*
 	 * Put back at same place: i.e. requeue to head of current
 	 * priority group (i.e. LIFO, used for preemption handling).
 	 */
-	__xnsched_rt_requeue(thread);
+	__xnsched_dyna_requeue(thread);
 }
 
-static void xnsched_rt_enqueue(struct xnthread *thread)
+static void xnsched_dyna_enqueue(struct xnthread *thread)
 {
 	/*
 	 * Enqueue for next pick: i.e. move to end of current priority
 	 * group (i.e. FIFO).
 	 */
-	__xnsched_rt_enqueue(thread);
+	__xnsched_dyna_enqueue(thread);
 }
 
-static void xnsched_rt_dequeue(struct xnthread *thread)
+static void xnsched_dyna_dequeue(struct xnthread *thread)
 {
 	/*
 	 * Pull from the runnable thread queue.
 	 */
-	__xnsched_rt_dequeue(thread);
+	__xnsched_dyna_dequeue(thread);
 }
 
 static void xnsched_rt_rotate(struct xnsched *sched,
@@ -79,7 +79,7 @@ static void xnsched_rt_rotate(struct xnsched *sched,
 		xnsched_putback(thread);
 }
 
-void xnsched_rt_tick(struct xnsched *sched)
+void xnsched_dyna_tick(struct xnsched *sched)
 {
 	/*
 	 * The round-robin time credit is only consumed by a running
@@ -91,27 +91,27 @@ void xnsched_rt_tick(struct xnsched *sched)
 	xnsched_putback(sched->curr);
 }
 
-static bool xnsched_rt_setparam(struct xnthread *thread,
+static bool xnsched_dyna_setparam(struct xnthread *thread,
 				const union xnsched_policy_param *p)
 {
-	return __xnsched_rt_setparam(thread, p);
+	return __xnsched_dyna_setparam(thread, p);
 }
 
-static void xnsched_rt_getparam(struct xnthread *thread,
+static void xnsched_dyna_getparam(struct xnthread *thread,
 				union xnsched_policy_param *p)
 {
-	__xnsched_rt_getparam(thread, p);
+	__xnsched_dyna_getparam(thread, p);
 }
 
 static void xnsched_rt_trackprio(struct xnthread *thread,
 				 const union xnsched_policy_param *p)
 {
-	__xnsched_rt_trackprio(thread, p);
+	__xnsched_dyna_trackprio(thread, p);
 }
 
 static void xnsched_rt_protectprio(struct xnthread *thread, int prio)
 {
-	__xnsched_rt_protectprio(thread, prio);
+	__xnsched_dyna_protectprio(thread, prio);
 }
 
 #ifdef CONFIG_XENO_OPT_VFILE
@@ -232,20 +232,20 @@ static void xnsched_rt_cleanup_vfile(struct xnsched_class *schedclass)
 #endif /* CONFIG_XENO_OPT_VFILE */
 
 struct xnsched_class xnsched_class_dyna = {
-	.sched_init		=	xnsched_rt_init,
-	.sched_enqueue		=	xnsched_rt_enqueue,
-	.sched_dequeue		=	xnsched_rt_dequeue,
-	.sched_requeue		=	xnsched_rt_requeue,
-	.sched_pick		=	xnsched_rt_pick,
-	.sched_tick		=	xnsched_rt_tick,
-	.sched_rotate		=	xnsched_rt_rotate,
+	.sched_init		=	xnsched_dyna_init,
+	.sched_enqueue		=	xnsched_dyna_enqueue,
+	.sched_dequeue		=	xnsched_dyna_dequeue,
+	.sched_requeue		=	xnsched_dyna_requeue,
+	.sched_pick		=	xnsched_dyna_pick,
+	.sched_tick		=	xnsched_dyna_tick,
+	.sched_rotate		=	xnsched_dyna_rotate,
 	.sched_forget		=	NULL,
 	.sched_kick		=	NULL,
 	.sched_declare		=	NULL,
-	.sched_setparam		=	xnsched_rt_setparam,
-	.sched_trackprio	=	xnsched_rt_trackprio,
-	.sched_protectprio	=	xnsched_rt_protectprio,
-	.sched_getparam		=	xnsched_rt_getparam,
+	.sched_setparam		=	xnsched_dyna_setparam,
+	.sched_trackprio	=	xnsched_dyna_trackprio,
+	.sched_protectprio	=	xnsched_dyna_protectprio,
+	.sched_getparam		=	xnsched_dyna_getparam,
 #ifdef CONFIG_XENO_OPT_VFILE
 	.sched_init_vfile	=	xnsched_rt_init_vfile,
 	.sched_cleanup_vfile	=	xnsched_rt_cleanup_vfile,

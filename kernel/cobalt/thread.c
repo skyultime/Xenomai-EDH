@@ -186,7 +186,6 @@ int __xnthread_init(struct xnthread *thread,
 	thread->wprio = XNSCHED_IDLE_PRIO;
 	thread->cprio = XNSCHED_IDLE_PRIO;
 	thread->bprio = XNSCHED_IDLE_PRIO;
-	//TODO BASTIEN prévoir une valeur ici
 	thread->next_deadline = 0;
 	thread->lock_count = 0;
 	thread->rrperiod = XN_INFINITE;

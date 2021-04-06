@@ -534,7 +534,7 @@ out:
 	return ret;
 }
 
-
+//next_deadline est ici relatif
 #ifndef DOXYGEN_CPP
 CURRENT_IMPL(int, rt_task_create_dyna, (RT_TASK *task, const char *name,
 				   int stksize, xnticks_t next_deadline, int mode))
@@ -551,7 +551,14 @@ int rt_task_create_dyna(RT_TASK *task, const char *name,
 	if (mode & ~(T_LOCK | T_WARNSW | T_JOINABLE))
 		return -EINVAL;
 
+	//The next deadline must be in the past
+	if(next_deadline <= 0)
+		return -EINVAL;
+	
+	next_deadline += rt_timer_read();
+
 	CANCEL_DEFER(svc);
+
 	//Ici on créer la tâche alchemy
 	ret = create_tcb_dyna(&tcb, task, name, next_deadline, mode);
 	if (ret)

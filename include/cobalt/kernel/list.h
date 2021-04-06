@@ -41,6 +41,12 @@ do {										\
 #define list_add_prilf(__new, __head, __member_pri, __member_next)		\
 	__list_add_pri(__new, __head, __member_pri, __member_next, <)
 
+#define list_add_priff_bis(__new, __head, __member_pri, __member_next)		\
+	__list_add_pri(__new, __head, __member_pri, __member_next, >=)
+
+#define list_add_prilf_bis(__new, __head, __member_pri, __member_next)		\
+	__list_add_pri(__new, __head, __member_pri, __member_next, >)
+
 #define list_get_entry(__head, __type, __member)		\
   ({								\
 	  __type *__item;					\
