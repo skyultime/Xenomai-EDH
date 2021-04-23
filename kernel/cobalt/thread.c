@@ -102,7 +102,8 @@ static int kthread_trampoline(void *arg)
 	 * anything that is not from Xenomai's RT class is assumed to
 	 * belong to SCHED_NORMAL linux-wise.
 	 */
-	if (thread->sched_class != &xnsched_class_rt) {
+	//TODO Bastien abolument regler cela
+	if (thread->sched_class != &xnsched_class_rt && thread->sched_class != &xnsched_class_dyna) {
 		policy = SCHED_NORMAL;
 		prio = 0;
 	} else {

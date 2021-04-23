@@ -22,6 +22,13 @@
  * @{
  */
 
+#ifndef _COBALT_KERNEL_SCHED_DYNA_H
+#define _COBALT_KERNEL_SCHED_DYNA_H
+
+#ifndef _COBALT_KERNEL_SCHED_H
+#error "please don't include cobalt/kernel/sched-dyna.h directly"
+#endif
+
 extern struct xnsched_class xnsched_class_dyna;
 
 static inline void __xnsched_dyna_requeue(struct xnthread *thread)
@@ -116,3 +123,5 @@ static inline struct xnthread *xnsched_dyna_pick(struct xnsched *sched)
 #endif
 
 void xnsched_dyna_tick(struct xnsched *sched);
+
+#endif

@@ -587,11 +587,13 @@ static inline void xnsched_kick(struct xnthread *thread)
 static inline void xnsched_enqueue(struct xnthread *thread)
 {
 	struct xnsched_class *sched_class = thread->sched_class;
-	if(sched_class == &xnsched_class_dyna){
-		__xnsched_dyna_enqueue(thread);
-	}
-	else if(sched_class != &xnsched_class_idle){
-		__xnsched_rt_enqueue(thread);
+	if(sched_class != &xnsched_class_idle){
+		if(thread->next_deadline){
+			__xnsched_dyna_enqueue(thread);
+		}
+		else{
+			__xnsched_rt_enqueue(thread);
+		}
 	}
 }
 
@@ -599,11 +601,13 @@ static inline void xnsched_dequeue(struct xnthread *thread)
 {
 	struct xnsched_class *sched_class = thread->sched_class;
 
-	if(sched_class == &xnsched_class_dyna){
-		__xnsched_dyna_dequeue(thread);
-	}	
-	else if (sched_class != &xnsched_class_idle){
-		__xnsched_rt_dequeue(thread);
+	if(sched_class != &xnsched_class_idle){
+		if(thread->next_deadline){
+			__xnsched_dyna_dequeue(thread);
+		}
+		else{
+			__xnsched_rt_dequeue(thread);
+		}
 	}
 		
 }
@@ -612,11 +616,14 @@ static inline void xnsched_requeue(struct xnthread *thread)
 {
 	struct xnsched_class *sched_class = thread->sched_class;
 
-	if(sched_class == &xnsched_class_dyna)
-		__xnsched_dyna_requeue(thread);
-
-	if (sched_class != &xnsched_class_idle)
-		__xnsched_rt_requeue(thread);
+	if(sched_class != &xnsched_class_idle){
+		if(thread->next_deadline){
+			__xnsched_dyna_requeue(thread);
+		}
+		else{
+			__xnsched_rt_requeue(thread);
+		}
+	}
 }
 
 static inline bool xnsched_setparam(struct xnthread *thread,
@@ -627,10 +634,10 @@ static inline bool xnsched_setparam(struct xnthread *thread,
 	if (sched_class == &xnsched_class_idle)
 		return __xnsched_idle_setparam(thread, p);
 	
-	if(sched_class == &xnsched_class_dyna)
+	if(thread->next_deadline)
 		return __xnsched_dyna_setparam(thread,p);
-
-	return __xnsched_rt_setparam(thread, p);
+	else
+		return __xnsched_rt_setparam(thread,p);
 }
 
 static inline void xnsched_getparam(struct xnthread *thread,
@@ -640,12 +647,13 @@ static inline void xnsched_getparam(struct xnthread *thread,
 
 	if (sched_class == &xnsched_class_idle)
 		__xnsched_idle_getparam(thread, p);
-	else if (sched_class == &xnsched_class_dyna)
+	else if (thread->next_deadline)
 		__xnsched_dyna_getparam(thread, p);
 	else
 		__xnsched_rt_getparam(thread, p);
 }
 
+//TODO Bastien y a t'il besoin de cela pour EDF?
 static inline void xnsched_trackprio(struct xnthread *thread,
 				     const union xnsched_policy_param *p)
 {
@@ -671,6 +679,7 @@ static inline void xnsched_protectprio(struct xnthread *thread, int prio)
 	thread->wprio = xnsched_calc_wprio(sched_class, thread->cprio);
 }
 
+//TODO Bastien rt forget est vide
 static inline void xnsched_forget(struct xnthread *thread)
 {
 	--thread->base_class->nthreads;

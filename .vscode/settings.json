@@ -5,6 +5,8 @@
         "sysinfo.h": "c",
         "sched-weak.h": "c",
         "sched-quota.h": "c",
-        "sched-dyna.h": "c"
+        "sched-dyna.h": "c",
+        "sched-rt.h": "c",
+        "sched-sporadic.h": "c"
     }
 }

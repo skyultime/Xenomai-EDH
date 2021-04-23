@@ -87,6 +87,7 @@ void xnsched_register_classes(void)
 	xnsched_register_class(&xnsched_class_quota);
 #endif
 	xnsched_register_class(&xnsched_class_rt);
+	xnsched_register_class(&xnsched_class_dyna);
 }
 
 #ifdef CONFIG_XENO_OPT_WATCHDOG

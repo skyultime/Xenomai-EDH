@@ -49,7 +49,7 @@ static void xnsched_dyna_dequeue(struct xnthread *thread)
 	__xnsched_dyna_dequeue(thread);
 }
 
-static void xnsched_rt_rotate(struct xnsched *sched,
+static void xnsched_dyna_rotate(struct xnsched *sched,
 			      const union xnsched_policy_param *p)
 {
 	struct xnthread *thread, *curr;
@@ -103,26 +103,26 @@ static void xnsched_dyna_getparam(struct xnthread *thread,
 	__xnsched_dyna_getparam(thread, p);
 }
 
-static void xnsched_rt_trackprio(struct xnthread *thread,
+static void xnsched_dyna_trackprio(struct xnthread *thread,
 				 const union xnsched_policy_param *p)
 {
 	__xnsched_dyna_trackprio(thread, p);
 }
 
-static void xnsched_rt_protectprio(struct xnthread *thread, int prio)
+static void xnsched_dyna_protectprio(struct xnthread *thread, int prio)
 {
 	__xnsched_dyna_protectprio(thread, prio);
 }
 
 #ifdef CONFIG_XENO_OPT_VFILE
 
-struct xnvfile_directory sched_rt_vfroot;
+struct xnvfile_directory sched_dyna_vfroot;
 
-struct vfile_sched_rt_priv {
+struct vfile_sched_dyna_priv {
 	struct xnthread *curr;
 };
 
-struct vfile_sched_rt_data {
+struct vfile_sched_dyna_data {
 	int cpu;
 	pid_t pid;
 	char name[XNOBJECT_NAME_LEN];
@@ -130,19 +130,19 @@ struct vfile_sched_rt_data {
 	int cprio;
 };
 
-static struct xnvfile_snapshot_ops vfile_sched_rt_ops;
+static struct xnvfile_snapshot_ops vfile_sched_dyna_ops;
 
-static struct xnvfile_snapshot vfile_sched_rt = {
-	.privsz = sizeof(struct vfile_sched_rt_priv),
-	.datasz = sizeof(struct vfile_sched_rt_data),
+static struct xnvfile_snapshot vfile_sched_dyna = {
+	.privsz = sizeof(struct vfile_sched_dyna_priv),
+	.datasz = sizeof(struct vfile_sched_dyna_data),
 	.tag = &nkthreadlist_tag,
-	.ops = &vfile_sched_rt_ops,
+	.ops = &vfile_sched_dyna_ops,
 };
 
-static int vfile_sched_rt_rewind(struct xnvfile_snapshot_iterator *it)
+static int vfile_sched_dyna_rewind(struct xnvfile_snapshot_iterator *it)
 {
-	struct vfile_sched_rt_priv *priv = xnvfile_iterator_priv(it);
-	int nrthreads = xnsched_class_rt.nthreads;
+	struct vfile_sched_dyna_priv *priv = xnvfile_iterator_priv(it);
+	int nrthreads = xnsched_class_dyna.nthreads;
 
 	if (nrthreads == 0)
 		return -ESRCH;
@@ -152,11 +152,11 @@ static int vfile_sched_rt_rewind(struct xnvfile_snapshot_iterator *it)
 	return nrthreads;
 }
 
-static int vfile_sched_rt_next(struct xnvfile_snapshot_iterator *it,
+static int vfile_sched_dyna_next(struct xnvfile_snapshot_iterator *it,
 			       void *data)
 {
-	struct vfile_sched_rt_priv *priv = xnvfile_iterator_priv(it);
-	struct vfile_sched_rt_data *p = data;
+	struct vfile_sched_dyna_priv *priv = xnvfile_iterator_priv(it);
+	struct vfile_sched_dyna_data *p = data;
 	struct xnthread *thread;
 
 	if (priv->curr == NULL)
@@ -168,7 +168,7 @@ static int vfile_sched_rt_next(struct xnvfile_snapshot_iterator *it,
 	else
 		priv->curr = list_next_entry(thread, glink);
 
-	if (thread->base_class != &xnsched_class_rt ||
+	if (thread->base_class != &xnsched_class_dyna ||
 	    xnthread_test_state(thread, XNWEAK))
 		return VFILE_SEQ_SKIP;
 
@@ -181,10 +181,10 @@ static int vfile_sched_rt_next(struct xnvfile_snapshot_iterator *it,
 	return 1;
 }
 
-static int vfile_sched_rt_show(struct xnvfile_snapshot_iterator *it,
+static int vfile_sched_dyna_show(struct xnvfile_snapshot_iterator *it,
 			       void *data)
 {
-	struct vfile_sched_rt_data *p = data;
+	struct vfile_sched_dyna_data *p = data;
 	char pribuf[16], ptbuf[16];
 
 	if (p == NULL)
@@ -204,29 +204,29 @@ static int vfile_sched_rt_show(struct xnvfile_snapshot_iterator *it,
 	return 0;
 }
 
-static struct xnvfile_snapshot_ops vfile_sched_rt_ops = {
-	.rewind = vfile_sched_rt_rewind,
-	.next = vfile_sched_rt_next,
-	.show = vfile_sched_rt_show,
+static struct xnvfile_snapshot_ops vfile_sched_dyna_ops = {
+	.rewind = vfile_sched_dyna_rewind,
+	.next = vfile_sched_dyna_next,
+	.show = vfile_sched_dyna_show,
 };
 
-static int xnsched_rt_init_vfile(struct xnsched_class *schedclass,
+static int xnsched_dyna_init_vfile(struct xnsched_class *schedclass,
 				 struct xnvfile_directory *vfroot)
 {
 	int ret;
 
-	ret = xnvfile_init_dir(schedclass->name, &sched_rt_vfroot, vfroot);
+	ret = xnvfile_init_dir(schedclass->name, &sched_dyna_vfroot, vfroot);
 	if (ret)
 		return ret;
 
-	return xnvfile_init_snapshot("threads", &vfile_sched_rt,
-				     &sched_rt_vfroot);
+	return xnvfile_init_snapshot("threads", &vfile_sched_dyna,
+				     &sched_dyna_vfroot);
 }
 
-static void xnsched_rt_cleanup_vfile(struct xnsched_class *schedclass)
+static void xnsched_dyna_cleanup_vfile(struct xnsched_class *schedclass)
 {
-	xnvfile_destroy_snapshot(&vfile_sched_rt);
-	xnvfile_destroy_dir(&sched_rt_vfroot);
+	xnvfile_destroy_snapshot(&vfile_sched_dyna);
+	xnvfile_destroy_dir(&sched_dyna_vfroot);
 }
 
 #endif /* CONFIG_XENO_OPT_VFILE */
@@ -247,11 +247,11 @@ struct xnsched_class xnsched_class_dyna = {
 	.sched_protectprio	=	xnsched_dyna_protectprio,
 	.sched_getparam		=	xnsched_dyna_getparam,
 #ifdef CONFIG_XENO_OPT_VFILE
-	.sched_init_vfile	=	xnsched_rt_init_vfile,
-	.sched_cleanup_vfile	=	xnsched_rt_cleanup_vfile,
+	.sched_init_vfile	=	xnsched_dyna_init_vfile,
+	.sched_cleanup_vfile	=	xnsched_dyna_cleanup_vfile,
 #endif
-	.weight			=	XNSCHED_CLASS_WEIGHT(4),
+	.weight			=	XNSCHED_CLASS_WEIGHT(5),
 	.policy			=	SCHED_FIFO,
-	.name			=	"rt"
+	.name			=	"dyna"
 };
 EXPORT_SYMBOL_GPL(xnsched_class_dyna);

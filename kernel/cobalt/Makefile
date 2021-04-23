@@ -9,6 +9,7 @@ xenomai-y :=	arith.o 	\
 		registry.o	\
 		sched-idle.o	\
 		sched-rt.o	\
+		sched-dyna.o  \
 		sched.o		\
 		select.o	\
 		synch.o		\
