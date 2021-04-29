@@ -60,8 +60,8 @@ int copperplate_create_thread(struct corethread_attributes *cta,
 	pthread_attr_setinheritsched_ex(&attr_ex, PTHREAD_INHERIT_SCHED);
 	pthread_attr_setstacksize_ex(&attr_ex, stacksize);
 	pthread_attr_setdetachstate_ex(&attr_ex, cta->detachstate);
-	//TODO BASTIEN trouver un moyen de faire passer la deadline proprement
-	attr_ex.nonstd.sched_param.sched_u.deadline.sched_deadline = cta->param_ex.sched_u.deadline.sched_deadline;
+	attr_ex.nonstd.sched_param.sched_u.deadline.sched_absolute_deadline = cta->param_ex.sched_u.deadline.sched_absolute_deadline;
+	attr_ex.nonstd.sched_param.sched_u.deadline.sched_relative_deadline = cta->param_ex.sched_u.deadline.sched_relative_deadline;
 	ret = -pthread_create_ex(ptid_r, &attr_ex, thread_trampoline, cta);
 	pthread_attr_destroy_ex(&attr_ex);
 	if (ret)

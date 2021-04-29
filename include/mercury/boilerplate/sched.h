@@ -26,7 +26,8 @@ struct __sched_rr_param {
 };
 
 struct __sched_deadline_param {
-	__u64 sched_deadline;
+	__u64 sched_absolute_deadline;
+	__u64 sched_relative_deadline;
 };
 
 struct sched_param_ex {

@@ -361,8 +361,8 @@ static int create_tcb_dyna(struct alchemy_task **tcbp, RT_TASK *task,
 	idata.magic = task_magic;
 	idata.finalizer = task_finalizer;
 	idata.policy = next_deadline ? SCHED_DEADLINE : SCHED_OTHER;
-	idata.param_ex.sched_u.deadline.sched_deadline = next_deadline;
-	//TODO BASTIEN vérifier qu'il n'y a pas de problème ici
+	idata.param_ex.sched_u.deadline.sched_absolute_deadline = next_deadline;
+	idata.param_ex.sched_u.deadline.sched_relative_deadline = next_deadline;
 	ret = threadobj_init(&tcb->thobj, &idata);
 	if (ret)
 		goto fail_threadinit;

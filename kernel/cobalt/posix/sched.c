@@ -33,7 +33,7 @@ cobalt_sched_policy_param(union xnsched_policy_param *param,
 	xnticks_t tslice;
 
 	prio = param_ex->sched_priority;
-	deadline = param_ex->sched_u.deadline.sched_deadline;
+	deadline = param_ex->sched_u.deadline.sched_absolute_deadline;
 	tslice = XN_INFINITE;
 	policy = u_policy;
 

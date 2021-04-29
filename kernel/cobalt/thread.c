@@ -220,7 +220,6 @@ int __xnthread_init(struct xnthread *thread,
 	if (ret)
 		goto err_out;
 
-	//TODO BASTIEN probablement des changements uniquement ici
 	ret = xnsched_set_policy(thread, sched_class, sched_param);
 	if (ret)
 		goto err_out;
@@ -556,7 +555,6 @@ int xnthread_init(struct xnthread *thread,
 
 	sched = xnsched_struct(cpumask_first(&affinity));
 
-	//TODO BASTIEN à priori les seuls changements sont à faire ici
 	ret = __xnthread_init(thread, attr, sched, sched_class, sched_param);
 	if (ret)
 		return ret;

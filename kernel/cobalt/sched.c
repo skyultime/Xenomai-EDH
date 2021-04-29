@@ -406,7 +406,6 @@ int xnsched_set_policy(struct xnthread *thread,
 	bool effective;
 	int ret;
 
-	//TODO BASTIEN bien penser à faire in checkparam pour la sched class dynamique
 	ret = xnsched_chkparam(sched_class, thread, p);
 	if (ret)
 		return ret;
@@ -419,7 +418,6 @@ int xnsched_set_policy(struct xnthread *thread,
 	 * affect the previous class (such as touching thread->rlink
 	 * for instance).
 	 */
-	//TODO BASTIEN à priori rien à faire ici
 	if (sched_class != thread->base_class) {
 		ret = xnsched_declare(sched_class, thread, p);
 		if (ret)
@@ -457,8 +455,7 @@ int xnsched_set_policy(struct xnthread *thread,
 	/*
 	 * This is the ONLY place where calling xnsched_setparam() is
 	 * legit, sane and safe.
-	 */
-	//TODO BASTIEN changements à faire ici impérativement
+	 */nt
 	effective = xnsched_setparam(thread, p);
 	if (effective) {
 		thread->sched_class = sched_class;
@@ -466,7 +463,6 @@ int xnsched_set_policy(struct xnthread *thread,
 	} else if (XENO_DEBUG(COBALT))
 		thread->sched_class = orig_effective_class;
 
-	//TODO BASTIEN à priori, si l'on arrive à faire tout les changements avant, rien à faire ici et cela devrait fonctionner
 	if (xnthread_test_state(thread, XNREADY))
 		xnsched_enqueue(thread);
 
