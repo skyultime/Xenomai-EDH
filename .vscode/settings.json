@@ -7,6 +7,9 @@
         "sched-quota.h": "c",
         "sched-dyna.h": "c",
         "sched-rt.h": "c",
-        "sched-sporadic.h": "c"
+        "sched-sporadic.h": "c",
+        "threadobj.h": "c",
+        "internal.h": "c",
+        "clockobj.h": "c"
     }
 }

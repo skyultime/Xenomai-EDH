@@ -29,7 +29,6 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <limits.h>
-#include <sched.h>
 #include "boilerplate/signal.h"
 #include "boilerplate/atomic.h"
 #include "boilerplate/lock.h"
@@ -1675,7 +1674,6 @@ int threadobj_wait_period(unsigned long *overruns_r)
 		sig = __RT(sigwaitinfo(&sigperiod_set, &si));
 		if(current->schedparam.sched_u.deadline.sched_relative_deadline != 0)//We have to requeue the xnthread
 			sched = xnsched_struct(cpumask_first(CPU_MASK_ALL));
-			sched->dyna.runnable
 		current->run_state = __THREAD_S_RUNNING;
 		if (sig == SIGPERIOD)
 			break;

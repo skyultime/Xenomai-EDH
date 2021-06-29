@@ -653,7 +653,6 @@ static inline void xnsched_getparam(struct xnthread *thread,
 		__xnsched_rt_getparam(thread, p);
 }
 
-//TODO Bastien y a t'il besoin de cela pour EDF?
 static inline void xnsched_trackprio(struct xnthread *thread,
 				     const union xnsched_policy_param *p)
 {
@@ -679,7 +678,6 @@ static inline void xnsched_protectprio(struct xnthread *thread, int prio)
 	thread->wprio = xnsched_calc_wprio(sched_class, thread->cprio);
 }
 
-//TODO Bastien rt forget est vide
 static inline void xnsched_forget(struct xnthread *thread)
 {
 	--thread->base_class->nthreads;
