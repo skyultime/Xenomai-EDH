@@ -38,6 +38,9 @@
 #include <cobalt/kernel/select.h>
 #include <cobalt/kernel/lock.h>
 #include <cobalt/kernel/thread.h>
+#include <pipeline/kevents.h>
+#include <pipeline/inband_work.h>
+#include <pipeline/sched.h>
 #include <trace/events/cobalt-core.h>
 #include "debug.h"
 
@@ -99,7 +102,8 @@ static int kthread_trampoline(void *arg)
 	 * anything that is not from Xenomai's RT class is assumed to
 	 * belong to SCHED_NORMAL linux-wise.
 	 */
-	if (thread->sched_class != &xnsched_class_rt) {
+	//TODO Bastien abolument regler cela
+	if (thread->sched_class != &xnsched_class_rt && thread->sched_class != &xnsched_class_dyna) {
 		policy = SCHED_NORMAL;
 		prio = 0;
 	} else {
@@ -183,6 +187,7 @@ int __xnthread_init(struct xnthread *thread,
 	thread->wprio = XNSCHED_IDLE_PRIO;
 	thread->cprio = XNSCHED_IDLE_PRIO;
 	thread->bprio = XNSCHED_IDLE_PRIO;
+	thread->next_deadline = 0;
 	thread->lock_count = 0;
 	thread->rrperiod = XN_INFINITE;
 	thread->wchan = NULL;
@@ -232,44 +237,6 @@ err_out:
 	xntimer_destroy(&thread->ptimer);
 
 	return ret;
-}
-
-void xnthread_init_shadow_tcb(struct xnthread *thread)
-{
-	struct xnarchtcb *tcb = xnthread_archtcb(thread);
-	struct task_struct *p = current;
-
-	/*
-	 * If the current task is a kthread, the pipeline will take
-	 * the necessary steps to make the FPU usable in such
-	 * context. The kernel already took care of this issue for
-	 * userland tasks (e.g. setting up a clean backup area).
-	 */
-	__ipipe_share_current(0);
-
-	tcb->core.host_task = p;
-	tcb->core.tsp = &p->thread;
-	tcb->core.mm = p->mm;
-	tcb->core.active_mm = p->mm;
-	tcb->core.tip = task_thread_info(p);
-#ifdef CONFIG_XENO_ARCH_FPU
-	tcb->core.user_fpu_owner = p;
-#endif /* CONFIG_XENO_ARCH_FPU */
-	xnarch_init_shadow_tcb(thread);
-
-	trace_cobalt_shadow_map(thread);
-}
-
-void xnthread_init_root_tcb(struct xnthread *thread)
-{
-	struct xnarchtcb *tcb = xnthread_archtcb(thread);
-	struct task_struct *p = current;
-
-	tcb->core.host_task = p;
-	tcb->core.tsp = &tcb->core.ts;
-	tcb->core.mm = p->mm;
-	tcb->core.tip = NULL;
-	xnarch_init_root_tcb(thread);
 }
 
 void xnthread_deregister(struct xnthread *thread)
@@ -406,51 +373,6 @@ void xnthread_prepare_wait(struct xnthread_wait_context *wc)
 }
 EXPORT_SYMBOL_GPL(xnthread_prepare_wait);
 
-static inline int moving_target(struct xnsched *sched, struct xnthread *thread)
-{
-	int ret = 0;
-#ifdef CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH
-	/*
-	 * When deleting a thread in the course of a context switch or
-	 * in flight to another CPU with nklock unlocked on a distant
-	 * CPU, do nothing, this case will be caught in
-	 * xnsched_finish_unlocked_switch.
-	 */
-	ret = (sched->status & XNINSW) ||
-		xnthread_test_state(thread, XNMIGRATE);
-#endif
-	return ret;
-}
-
-#ifdef CONFIG_XENO_ARCH_FPU
-
-static inline void giveup_fpu(struct xnsched *sched,
-			      struct xnthread *thread)
-{
-	if (thread == sched->fpuholder)
-		sched->fpuholder = NULL;
-}
-
-void xnthread_switch_fpu(struct xnsched *sched)
-{
-	struct xnthread *curr = sched->curr;
-
-	if (!xnthread_test_state(curr, XNFPU))
-		return;
-
-	xnarch_switch_fpu(sched->fpuholder, curr);
-	sched->fpuholder = curr;
-}
-
-#else /* !CONFIG_XENO_ARCH_FPU */
-
-static inline void giveup_fpu(struct xnsched *sched,
-				      struct xnthread *thread)
-{
-}
-
-#endif /* !CONFIG_XENO_ARCH_FPU */
-
 static inline void release_all_ownerships(struct xnthread *curr)
 {
 	struct xnsynch *synch, *tmp;
@@ -469,8 +391,6 @@ static inline void release_all_ownerships(struct xnthread *curr)
 
 static inline void cleanup_tcb(struct xnthread *curr) /* nklock held, irqs off */
 {
-	struct xnsched *sched = curr->sched;
-
 	list_del(&curr->glink);
 	cobalt_nrthreads--;
 	xnvfile_touch_tag(&nkthreadlist_tag);
@@ -493,11 +413,7 @@ static inline void cleanup_tcb(struct xnthread *curr) /* nklock held, irqs off *
 	 */
 	release_all_ownerships(curr);
 
-	giveup_fpu(sched, curr);
-
-	if (moving_target(sched, curr))
-		return;
-
+	pipeline_finalize_thread(curr);
 	xnsched_forget(curr);
 	xnthread_deregister(curr);
 }
@@ -1930,7 +1846,6 @@ int xnthread_harden(void)
 {
 	struct task_struct *p = current;
 	struct xnthread *thread;
-	struct xnsched *sched;
 	int ret;
 
 	secondary_mode_only();
@@ -1946,19 +1861,16 @@ int xnthread_harden(void)
 
 	xnthread_clear_sync_window(thread, XNRELAX);
 
-	ret = __ipipe_migrate_head();
+	ret = pipeline_leave_inband();
 	if (ret) {
 		xnthread_test_cancel();
 		xnthread_set_sync_window(thread, XNRELAX);
 		return ret;
 	}
 
-	/* "current" is now running into the Xenomai domain. */
-	sched = xnsched_finish_unlocked_switch(thread->sched);
-	xnthread_switch_fpu(sched);
+	/* "current" is now running on the out-of-band stage. */
 
 	xnlock_clear_irqon(&nklock);
-	xnsched_resched_after_unlocked_switch();
 	xnthread_test_cancel();
 
 	trace_cobalt_shadow_hardened(thread);
@@ -1981,16 +1893,16 @@ int xnthread_harden(void)
 EXPORT_SYMBOL_GPL(xnthread_harden);
 
 struct lostage_wakeup {
-	struct ipipe_work_header work; /* Must be first. */
+	struct pipeline_inband_work inband_work; /* Must be first. */
 	struct task_struct *task;
 };
 
-static void lostage_task_wakeup(struct ipipe_work_header *work)
+static void lostage_task_wakeup(struct pipeline_inband_work *inband_work)
 {
 	struct lostage_wakeup *rq;
 	struct task_struct *p;
 
-	rq = container_of(work, struct lostage_wakeup, work);
+	rq = container_of(inband_work, struct lostage_wakeup, inband_work);
 	p = rq->task;
 
 	trace_cobalt_lostage_wakeup(p);
@@ -2001,16 +1913,14 @@ static void lostage_task_wakeup(struct ipipe_work_header *work)
 static void post_wakeup(struct task_struct *p)
 {
 	struct lostage_wakeup wakework = {
-		.work = {
-			.size = sizeof(wakework),
-			.handler = lostage_task_wakeup,
-		},
+		.inband_work = PIPELINE_INBAND_WORK_INITIALIZER(wakework,
+					lostage_task_wakeup),
 		.task = p,
 	};
 
 	trace_cobalt_lostage_request("wakeup", wakework.task);
 
-	ipipe_post_work_root(&wakework, work);
+	pipeline_post_inband_work(&wakework);
 }
 
 void __xnthread_propagate_schedparam(struct xnthread *curr)
@@ -2073,9 +1983,8 @@ void __xnthread_propagate_schedparam(struct xnthread *curr)
 void xnthread_relax(int notify, int reason)
 {
 	struct xnthread *thread = xnthread_current();
+	int cpu __maybe_unused, suspension;
 	struct task_struct *p = current;
-	int suspension = XNRELAX;
-	int cpu __maybe_unused;
 	kernel_siginfo_t si;
 
 	primary_mode_only();
@@ -2105,21 +2014,8 @@ void xnthread_relax(int notify, int reason)
 	 * dropped by xnthread_suspend().
 	 */
 	xnlock_get(&nklock);
-#ifdef IPIPE_KEVT_USERINTRET
-	/*
-	 * If the thread is being debugged, record that it should migrate back
-	 * in case it resumes in userspace. If it resumes in kernel space, i.e.
-	 * over a restarting syscall, the associated hardening will both clear
-	 * XNCONTHI and disable the user return notifier again.
-	 */
-	if (xnthread_test_state(thread, XNSSTEP)) {
-		xnthread_set_info(thread, XNCONTHI);
-		ipipe_enable_user_intret_notifier();
-		suspension |= XNDBGSTOP;
-	}
-#endif
-	set_current_state(p->state & ~TASK_NOWAKEUP);
 	xnthread_run_handler_stack(thread, relax_thread);
+	suspension = pipeline_leave_oob_prepare();
 	xnthread_suspend(thread, suspension, XN_INFINITE, XN_RELATIVE, NULL);
 	splnone();
 
@@ -2127,11 +2023,11 @@ void xnthread_relax(int notify, int reason)
 	 * Basic sanity check after an expected transition to secondary
 	 * mode.
 	 */
-	XENO_WARN(COBALT, !ipipe_root_p,
+	XENO_WARN(COBALT, is_primary_domain(),
 		  "xnthread_relax() failed for thread %s[%d]",
 		  thread->name, xnthread_host_pid(thread));
 
-	__ipipe_reenter_root();
+	pipeline_leave_oob_finish();
 
 	/* Account for secondary mode switch. */
 	xnstat_counter_inc(&thread->stat.ssw);
@@ -2183,14 +2079,14 @@ void xnthread_relax(int notify, int reason)
 	 */
 	xnthread_clear_localinfo(thread, XNSYSRST);
 
-	ipipe_clear_thread_flag(TIP_MAYDAY);
+	pipeline_clear_mayday();
 
 	trace_cobalt_shadow_relaxed(thread);
 }
 EXPORT_SYMBOL_GPL(xnthread_relax);
 
 struct lostage_signal {
-	struct ipipe_work_header work; /* Must be first. */
+	struct pipeline_inband_work inband_work; /* Must be first. */
 	struct task_struct *task;
 	int signo, sigval;
 };
@@ -2204,7 +2100,7 @@ static inline void do_kthread_signal(struct task_struct *p,
 	       thread->name, rq->signo, rq->sigval);
 }
 
-static void lostage_task_signal(struct ipipe_work_header *work)
+static void lostage_task_signal(struct pipeline_inband_work *inband_work)
 {
 	struct lostage_signal *rq;
 	struct xnthread *thread;
@@ -2212,7 +2108,7 @@ static void lostage_task_signal(struct ipipe_work_header *work)
 	kernel_siginfo_t si;
 	int signo;
 
-	rq = container_of(work, struct lostage_signal, work);
+	rq = container_of(inband_work, struct lostage_signal, inband_work);
 	p = rq->task;
 
 	thread = xnthread_from_task(p);
@@ -2341,7 +2237,7 @@ void __xnthread_kick(struct xnthread *thread) /* nklock locked, irqs off */
 	 */
 	if (thread != xnsched_current_thread() &&
 	    xnthread_test_state(thread, XNUSER))
-		ipipe_raise_mayday(p);
+		pipeline_raise_mayday(p);
 }
 
 void xnthread_kick(struct xnthread *thread)
@@ -2397,10 +2293,8 @@ EXPORT_SYMBOL_GPL(xnthread_demote);
 void xnthread_signal(struct xnthread *thread, int sig, int arg)
 {
 	struct lostage_signal sigwork = {
-		.work = {
-			.size = sizeof(sigwork),
-			.handler = lostage_task_signal,
-		},
+		.inband_work = PIPELINE_INBAND_WORK_INITIALIZER(sigwork,
+					lostage_task_signal),
 		.task = xnthread_host_task(thread),
 		.signo = sig,
 		.sigval = sig == SIGDEBUG ? arg | sigdebug_marker : arg,
@@ -2408,7 +2302,7 @@ void xnthread_signal(struct xnthread *thread, int sig, int arg)
 
 	trace_cobalt_lostage_request("signal", sigwork.task);
 
-	ipipe_post_work_root(&sigwork, work);
+	pipeline_post_inband_work(&sigwork);
 }
 EXPORT_SYMBOL_GPL(xnthread_signal);
 
@@ -2443,38 +2337,36 @@ void xnthread_pin_initial(struct xnthread *thread)
 }
 
 struct parent_wakeup_request {
-	struct ipipe_work_header work; /* Must be first. */
+	struct pipeline_inband_work inband_work; /* Must be first. */
 	struct completion *done;
 };
 
-static void do_parent_wakeup(struct ipipe_work_header *work)
+static void do_parent_wakeup(struct pipeline_inband_work *inband_work)
 {
 	struct parent_wakeup_request *rq;
 
-	rq = container_of(work, struct parent_wakeup_request, work);
+	rq = container_of(inband_work, struct parent_wakeup_request, inband_work);
 	complete(rq->done);
 }
 
 static inline void wakeup_parent(struct completion *done)
 {
 	struct parent_wakeup_request wakework = {
-		.work = {
-			.size = sizeof(wakework),
-			.handler = do_parent_wakeup,
-		},
+		.inband_work = PIPELINE_INBAND_WORK_INITIALIZER(wakework,
+					do_parent_wakeup),
 		.done = done,
 	};
 
 	trace_cobalt_lostage_request("wakeup", current);
 
-	ipipe_post_work_root(&wakework, work);
+	pipeline_post_inband_work(&wakework);
 }
 
 static inline void init_kthread_info(struct xnthread *thread)
 {
-	struct ipipe_threadinfo *p;
+	struct cobalt_threadinfo *p;
 
-	p = ipipe_current_threadinfo();
+	p = pipeline_current();
 	p->thread = thread;
 	p->process = NULL;
 }
@@ -2523,7 +2415,6 @@ static inline void init_kthread_info(struct xnthread *thread)
  */
 int xnthread_map(struct xnthread *thread, struct completion *done)
 {
-	struct task_struct *p = current;
 	int ret;
 	spl_t s;
 
@@ -2536,13 +2427,13 @@ int xnthread_map(struct xnthread *thread, struct completion *done)
 	thread->u_window = NULL;
 	xnthread_pin_initial(thread);
 
-	xnthread_init_shadow_tcb(thread);
+	pipeline_init_shadow_tcb(thread);
 	xnthread_suspend(thread, XNRELAX, XN_INFINITE, XN_RELATIVE, NULL);
 	init_kthread_info(thread);
 	xnthread_set_state(thread, XNMAPPED);
 	xndebug_shadow_init(thread);
 	xnthread_run_handler(thread, map_thread);
-	ipipe_enable_notifier(p);
+	pipeline_enable_kevents();
 
 	/*
 	 * CAUTION: Soon after xnthread_init() has returned,
@@ -2594,7 +2485,7 @@ void xnthread_call_mayday(struct xnthread *thread, int reason)
 	XENO_BUG_ON(COBALT, !xnthread_test_state(thread, XNUSER));
 	xnthread_set_info(thread, XNKICKED);
 	xnthread_signal(thread, SIGDEBUG, reason);
-	ipipe_raise_mayday(p);
+	pipeline_raise_mayday(p);
 }
 EXPORT_SYMBOL_GPL(xnthread_call_mayday);
 

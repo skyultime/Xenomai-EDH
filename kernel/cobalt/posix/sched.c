@@ -29,9 +29,11 @@ cobalt_sched_policy_param(union xnsched_policy_param *param,
 {
 	struct xnsched_class *sched_class;
 	int prio, policy;
+	xnticks_t deadline;
 	xnticks_t tslice;
 
 	prio = param_ex->sched_priority;
+	deadline = param_ex->sched_u.deadline.sched_absolute_deadline;
 	tslice = XN_INFINITE;
 	policy = u_policy;
 
@@ -44,8 +46,15 @@ cobalt_sched_policy_param(union xnsched_policy_param *param,
 		prio = -prio;
 		policy = SCHED_WEAK;
 	}
-	sched_class = &xnsched_class_rt;
+
+	if(deadline){
+		sched_class = &xnsched_class_dyna;
+		param->rt.deadline = deadline;
+	} else {
+		sched_class = &xnsched_class_rt;
+	}
 	param->rt.prio = prio;
+
 
 	switch (policy) {
 	case SCHED_NORMAL:
@@ -87,6 +96,8 @@ cobalt_sched_policy_param(union xnsched_policy_param *param,
 		    prio > XNSCHED_CORE_MAX_PRIO)
 			return NULL;
 		break;
+	case SCHED_DEADLINE:
+		break;	
 #ifdef CONFIG_XENO_OPT_SCHED_SPORADIC
 	case SCHED_SPORADIC:
 		param->pss.normal_prio = param_ex->sched_priority;

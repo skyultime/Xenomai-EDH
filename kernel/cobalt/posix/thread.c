@@ -22,6 +22,7 @@
 #include <linux/signal.h>
 #include <linux/jiffies.h>
 #include <linux/err.h>
+#include <linux/kernel.h>
 #include "internal.h"
 #include "thread.h"
 #include "sched.h"

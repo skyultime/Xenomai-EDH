@@ -27,8 +27,10 @@
 #include <boilerplate/list.h>
 #include <boilerplate/lock.h>
 #include <boilerplate/sched.h>
+#include <cobalt/kernel/sched.h>
 #include <copperplate/clockobj.h>
 #include <copperplate/heapobj.h>
+#include <sched.h>
 
 #ifdef CONFIG_XENO_COBALT
 

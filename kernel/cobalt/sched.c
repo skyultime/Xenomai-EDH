@@ -27,6 +27,7 @@
 #include <cobalt/kernel/heap.h>
 #include <cobalt/kernel/arith.h>
 #include <cobalt/uapi/signal.h>
+#include <pipeline/sched.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/cobalt-core.h>
 
@@ -86,6 +87,7 @@ void xnsched_register_classes(void)
 	xnsched_register_class(&xnsched_class_quota);
 #endif
 	xnsched_register_class(&xnsched_class_rt);
+	xnsched_register_class(&xnsched_class_dyna);
 }
 
 #ifdef CONFIG_XENO_OPT_WATCHDOG
@@ -212,7 +214,7 @@ static void xnsched_init(struct xnsched *sched, int cpu)
 	sched->fpuholder = &sched->rootcb;
 #endif /* CONFIG_XENO_ARCH_FPU */
 
-	xnthread_init_root_tcb(&sched->rootcb);
+	pipeline_init_root_tcb(&sched->rootcb);
 	list_add_tail(&sched->rootcb.glink, &nkthreadq);
 	cobalt_nrthreads++;
 
@@ -234,12 +236,7 @@ void xnsched_init_all(void)
 		xnsched_init(sched, cpu);
 	}
 
-#ifdef CONFIG_SMP
-	ipipe_request_irq(&xnsched_realtime_domain,
-			  IPIPE_RESCHEDULE_IPI,
-			  (ipipe_irq_handler_t)__xnsched_run_handler,
-			  NULL, NULL);
-#endif
+	pipeline_request_resched_ipi(__xnsched_run_handler);
 }
 
 static void xnsched_destroy(struct xnsched *sched)
@@ -260,9 +257,7 @@ void xnsched_destroy_all(void)
 	int cpu;
 	spl_t s;
 
-#ifdef CONFIG_SMP
-	ipipe_free_irq(&xnsched_realtime_domain, IPIPE_RESCHEDULE_IPI);
-#endif
+	pipeline_free_resched_ipi();
 
 	xnlock_get_irqsave(&nklock, s);
 
@@ -344,34 +339,6 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
 	return thread;
 #endif /* CONFIG_XENO_OPT_SCHED_CLASSES */
 }
-
-#ifdef CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH
-
-struct xnsched *xnsched_finish_unlocked_switch(struct xnsched *sched)
-{
-	struct xnthread *last;
-	spl_t s;
-
-	xnlock_get_irqsave(&nklock, s);
-
-#ifdef CONFIG_SMP
-	/* If current thread migrated while suspended */
-	sched = xnsched_current();
-#endif /* CONFIG_SMP */
-
-	last = sched->last;
-	sched->status &= ~XNINSW;
-
-	/* Detect a thread which has migrated. */
-	if (last->sched != sched) {
-		xnsched_putback(last);
-		xnthread_clear_state(last, XNMIGRATE);
-	}
-
-	return sched;
-}
-
-#endif /* CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH */
 
 void xnsched_lock(void)
 {
@@ -488,7 +455,7 @@ int xnsched_set_policy(struct xnthread *thread,
 	/*
 	 * This is the ONLY place where calling xnsched_setparam() is
 	 * legit, sane and safe.
-	 */
+	 */nt
 	effective = xnsched_setparam(thread, p);
 	if (effective) {
 		thread->sched_class = sched_class;
@@ -628,17 +595,8 @@ void xnsched_migrate(struct xnthread *thread, struct xnsched *sched)
 {
 	xnsched_set_resched(thread->sched);
 	migrate_thread(thread, sched);
-
-#ifdef CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH
-	/*
-	 * Mark the thread in flight, xnsched_finish_unlocked_switch()
-	 * will put the thread on the remote runqueue.
-	 */
-	xnthread_set_state(thread, XNMIGRATE);
-#else
 	/* Move thread to the remote run queue. */
 	xnsched_putback(thread);
-#endif
 }
 
 /*
@@ -840,18 +798,6 @@ struct xnthread *xnsched_rt_pick(struct xnsched *sched)
 
 #endif /* !CONFIG_XENO_OPT_SCALABLE_SCHED */
 
-static inline void switch_context(struct xnsched *sched,
-				  struct xnthread *prev, struct xnthread *next)
-{
-#ifdef CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH
-	sched->last = prev;
-	sched->status |= XNINSW;
-	xnlock_clear_irqon(&nklock);
-#endif
-
-	xnarch_switch_to(prev, next);
-}
-
 /**
  * @fn int xnsched_run(void)
  * @brief The rescheduling procedure.
@@ -909,7 +855,7 @@ static inline int test_resched(struct xnsched *sched)
 	/* Send resched IPI to remote CPU(s). */
 	if (unlikely(!cpumask_empty(&sched->resched))) {
 		smp_mb();
-		ipipe_send_ipi(IPIPE_RESCHEDULE_IPI, sched->resched);
+		pipeline_send_resched_ipi(&sched->resched);
 		cpumask_clear(&sched->resched);
 	}
 #endif
@@ -920,29 +866,14 @@ static inline int test_resched(struct xnsched *sched)
 
 static inline void enter_root(struct xnthread *root)
 {
-	struct xnarchtcb *rootcb __maybe_unused = xnthread_archtcb(root);
-
 #ifdef CONFIG_XENO_OPT_WATCHDOG
 	xntimer_stop(&root->sched->wdtimer);
-#endif
-#ifdef CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH
-	if (rootcb->core.mm == NULL)
-		set_ti_thread_flag(rootcb->core.tip, TIF_MMSWITCH_INT);
 #endif
 }
 
 static inline void leave_root(struct xnthread *root)
 {
-	struct xnarchtcb *rootcb = xnthread_archtcb(root);
-	struct task_struct *p = current;
-
-	ipipe_notify_root_preemption();
-	/* Remember the preempted Linux task pointer. */
-	rootcb->core.host_task = p;
-	rootcb->core.tsp = &p->thread;
-	rootcb->core.mm = rootcb->core.active_mm = ipipe_get_active_mm();
-	rootcb->core.tip = task_thread_info(p);
-	xnarch_leave_root(root);
+	pipeline_prep_switch_oob(root);
 
 #ifdef CONFIG_XENO_OPT_WATCHDOG
 	xntimer_start(&root->sched->wdtimer, get_watchdog_timeout(),
@@ -963,14 +894,11 @@ static inline void do_lazy_user_work(struct xnthread *curr)
 
 int ___xnsched_run(struct xnsched *sched)
 {
+	bool switched = false, leaving_inband;
 	struct xnthread *prev, *next, *curr;
-	int switched, shadow;
 	spl_t s;
 
-	XENO_WARN_ON_ONCE(COBALT, !hard_irqs_disabled() && ipipe_root_p);
-
-	if (xnarch_escalate())
-		return 0;
+	XENO_WARN_ON_ONCE(COBALT, is_secondary_domain());
 
 	trace_cobalt_schedule(sched);
 
@@ -984,11 +912,10 @@ int ___xnsched_run(struct xnsched *sched)
 	 * "current" for disambiguating.
 	 */
 	xntrace_pid(task_pid_nr(current), xnthread_current_priority(curr));
-reschedule:
+
 	if (xnthread_test_state(curr, XNUSER))
 		do_lazy_user_work(curr);
 
-	switched = 0;
 	if (!test_resched(sched))
 		goto out;
 
@@ -1015,11 +942,11 @@ reschedule:
 	 * store tearing.
 	 */
 	WRITE_ONCE(sched->curr, next);
-	shadow = 1;
+	leaving_inband = false;
 
 	if (xnthread_test_state(prev, XNROOT)) {
 		leave_root(prev);
-		shadow = 0;
+		leaving_inband = true;
 	} else if (xnthread_test_state(next, XNROOT)) {
 		if (sched->lflags & XNHTICK)
 			xnintr_host_tick(sched);
@@ -1031,50 +958,22 @@ reschedule:
 	xnstat_exectime_switch(sched, &next->stat.account);
 	xnstat_counter_inc(&next->stat.csw);
 
-	switch_context(sched, prev, next);
+	if (pipeline_switch_to(prev, next, leaving_inband))
+		/* oob -> in-band transition detected. */
+		return true;
 
 	/*
-	 * Test whether we transitioned from primary mode to secondary
-	 * over a shadow thread, caused by a call to xnthread_relax().
-	 * In such a case, we are running over the regular schedule()
-	 * tail code, so we have to skip our tail code.
+	 * Re-read sched->curr for tracing: the current thread may
+	 * have switched from in-band to oob context.
 	 */
-	if (shadow && ipipe_root_p)
-		goto shadow_epilogue;
+	xntrace_pid(task_pid_nr(current),
+		xnthread_current_priority(xnsched_current()->curr));
 
-	switched = 1;
-	sched = xnsched_finish_unlocked_switch(sched);
-	/*
-	 * Re-read the currently running thread, this is needed
-	 * because of relaxed/hardened transitions.
-	 */
-	curr = sched->curr;
-	xnthread_switch_fpu(sched);
-	xntrace_pid(task_pid_nr(current), xnthread_current_priority(curr));
+	switched = true;
 out:
-	if (switched &&
-	    xnsched_maybe_resched_after_unlocked_switch(sched))
-		goto reschedule;
-
 	xnlock_put_irqrestore(&nklock, s);
 
-	return switched;
-
-shadow_epilogue:
-	__ipipe_complete_domain_migration();
-
-	XENO_BUG_ON(COBALT, xnthread_current() == NULL);
-
-	/*
-	 * Interrupts must be disabled here (has to be done on entry
-	 * of the Linux [__]switch_to function), but it is what
-	 * callers expect, specifically the reschedule of an IRQ
-	 * handler that hit before we call xnsched_run in
-	 * xnthread_suspend() when relaxing a thread.
-	 */
-	XENO_BUG_ON(COBALT, !hard_irqs_disabled());
-
-	return 1;
+	return !!switched;
 }
 EXPORT_SYMBOL_GPL(___xnsched_run);
 
@@ -1339,7 +1238,7 @@ static int vfile_schedstat_next(struct xnvfile_snapshot_iterator *it,
 
 scan_irqs:
 #ifdef CONFIG_XENO_OPT_STATS_IRQS
-	if (priv->irq >= IPIPE_NR_IRQS)
+	if (priv->irq >= PIPELINE_NR_IRQS)
 		return 0;	/* All done. */
 
 	ret = xnintr_query_next(priv->irq, &priv->intr_it, p->name);

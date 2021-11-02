@@ -29,7 +29,6 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <limits.h>
-#include <sched.h>
 #include "boilerplate/signal.h"
 #include "boilerplate/atomic.h"
 #include "boilerplate/lock.h"
@@ -1022,7 +1021,7 @@ static int request_setschedparam(struct threadobj *thobj, int policy,
 #ifdef CONFIG_XENO_PSHARED
 	struct remote_request *rq;
 
-	if (unlikely(!threadobj_local_p(thobj))) {
+	if (!threadobj_local_p(thobj)) {
 		rq = xnmalloc(sizeof(*rq));
 		if (rq == NULL)
 			return -ENOMEM;
@@ -1065,7 +1064,7 @@ static int request_cancel(struct threadobj *thobj) /* thobj->lock held, dropped.
 	struct remote_request *rq;
 	int ret;
 
-	if (unlikely(!threadobj_local_p(thobj))) {
+	if (!threadobj_local_p(thobj)) {
 		threadobj_unlock(thobj);
 		rq = xnmalloc(sizeof(*rq));
 		if (rq == NULL)
@@ -1665,6 +1664,7 @@ int threadobj_wait_period(unsigned long *overruns_r)
 	struct threadobj *current = threadobj_current();
 	siginfo_t si;
 	int sig;
+	struct xnsched *sched;
 
 	if (!(current->status & __THREAD_S_PERIODIC))
 		return -EWOULDBLOCK;
@@ -1672,6 +1672,8 @@ int threadobj_wait_period(unsigned long *overruns_r)
 	for (;;) {
 		current->run_state = __THREAD_S_DELAYED;
 		sig = __RT(sigwaitinfo(&sigperiod_set, &si));
+		if(current->schedparam.sched_u.deadline.sched_relative_deadline != 0)//We have to requeue the xnthread
+			sched = xnsched_struct(cpumask_first(CPU_MASK_ALL));
 		current->run_state = __THREAD_S_RUNNING;
 		if (sig == SIGPERIOD)
 			break;

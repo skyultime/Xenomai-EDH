@@ -149,6 +149,7 @@ int pthread_create_ex(pthread_t *ptid_r,
 	if (inherit == PTHREAD_EXPLICIT_SCHED) {
 		pthread_attr_getschedpolicy_ex(attr_ex, &iargs.policy);
 		pthread_attr_getschedparam_ex(attr_ex, &iargs.param_ex);
+		printf("inherit == PTHREAD_EXPLICIT_SCHED");
 	}
 
 	if (linuxthreads && geteuid()) {

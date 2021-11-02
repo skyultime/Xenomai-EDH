@@ -30,6 +30,7 @@
 #include <cobalt/kernel/vfile.h>
 #include <cobalt/kernel/assert.h>
 #include <asm/xenomai/machine.h>
+#include <pipeline/sched.h>
 
 /**
  * @addtogroup cobalt_core_sched
@@ -51,6 +52,10 @@ struct xnsched_rt {
 	xnsched_queue_t runnable;	/*!< Runnable thread queue. */
 };
 
+struct xnsched_dyna {
+	xnsched_queue_t runnable;
+};
+
 /*!
  * \brief Scheduling information structure.
  */
@@ -70,6 +75,7 @@ struct xnsched {
 #endif
 	/*!< Context of built-in real-time class. */
 	struct xnsched_rt rt;
+	struct xnsched_dyna dyna;
 #ifdef CONFIG_XENO_OPT_SCHED_WEAK
 	/*!< Context of weak scheduling class. */
 	struct xnsched_weak weak;
@@ -94,9 +100,6 @@ struct xnsched {
 	struct xntimer rrbtimer;
 	/*!< Root thread control block. */
 	struct xnthread rootcb;
-#ifdef CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH
-	struct xnthread *last;
-#endif
 #ifdef CONFIG_XENO_ARCH_FPU
 	/*!< Thread owning the current FPU context. */
 	struct xnthread *fpuholder;
@@ -236,8 +239,6 @@ static inline void xnsched_set_self_resched(struct xnsched *sched)
 	sched->status |= XNRESCHED;
 }
 
-#define xnsched_realtime_domain  cobalt_pipeline.domain
-
 /* Set resched flag for the given scheduler. */
 #ifdef CONFIG_SMP
 
@@ -305,7 +306,7 @@ static inline int __xnsched_run(struct xnsched *sched)
 	     (XNINIRQ|XNINSW|XNRESCHED)) != XNRESCHED)
 		return 0;
 
-	return ___xnsched_run(sched);
+	return pipeline_schedule(sched);
 }
 
 static inline int xnsched_run(void)
@@ -351,42 +352,12 @@ static inline int xnsched_primary_p(void)
 	return !xnsched_unblockable_p();
 }
 
-#ifdef CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH
-
-struct xnsched *xnsched_finish_unlocked_switch(struct xnsched *sched);
-
-#define xnsched_resched_after_unlocked_switch() xnsched_run()
-
-static inline
-int xnsched_maybe_resched_after_unlocked_switch(struct xnsched *sched)
-{
-	return sched->status & XNRESCHED;
-}
-
-#else /* !CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH */
-
-static inline struct xnsched *
-xnsched_finish_unlocked_switch(struct xnsched *sched)
-{
-	XENO_BUG_ON(COBALT, !hard_irqs_disabled());
-	return xnsched_current();
-}
-
-static inline void xnsched_resched_after_unlocked_switch(void) { }
-
-static inline int
-xnsched_maybe_resched_after_unlocked_switch(struct xnsched *sched)
-{
-	return 0;
-}
-
-#endif /* !CONFIG_IPIPE_WANT_PREEMPTIBLE_SWITCH */
-
 bool xnsched_set_effective_priority(struct xnthread *thread,
 				    int prio);
 
 #include <cobalt/kernel/sched-idle.h>
 #include <cobalt/kernel/sched-rt.h>
+#include <cobalt/kernel/sched-dyna.h>
 
 int xnsched_init_proc(void);
 
@@ -452,7 +423,6 @@ static inline int xnsched_init_thread(struct xnthread *thread)
 	int ret = 0;
 
 	xnsched_idle_init_thread(thread);
-	xnsched_rt_init_thread(thread);
 
 #ifdef CONFIG_XENO_OPT_SCHED_TP
 	ret = xnsched_tp_init_thread(thread);
@@ -617,25 +587,43 @@ static inline void xnsched_kick(struct xnthread *thread)
 static inline void xnsched_enqueue(struct xnthread *thread)
 {
 	struct xnsched_class *sched_class = thread->sched_class;
-
-	if (sched_class != &xnsched_class_idle)
-		__xnsched_rt_enqueue(thread);
+	if(sched_class != &xnsched_class_idle){
+		if(thread->next_deadline){
+			__xnsched_dyna_enqueue(thread);
+		}
+		else{
+			__xnsched_rt_enqueue(thread);
+		}
+	}
 }
 
 static inline void xnsched_dequeue(struct xnthread *thread)
 {
 	struct xnsched_class *sched_class = thread->sched_class;
 
-	if (sched_class != &xnsched_class_idle)
-		__xnsched_rt_dequeue(thread);
+	if(sched_class != &xnsched_class_idle){
+		if(thread->next_deadline){
+			__xnsched_dyna_dequeue(thread);
+		}
+		else{
+			__xnsched_rt_dequeue(thread);
+		}
+	}
+		
 }
 
 static inline void xnsched_requeue(struct xnthread *thread)
 {
 	struct xnsched_class *sched_class = thread->sched_class;
 
-	if (sched_class != &xnsched_class_idle)
-		__xnsched_rt_requeue(thread);
+	if(sched_class != &xnsched_class_idle){
+		if(thread->next_deadline){
+			__xnsched_dyna_requeue(thread);
+		}
+		else{
+			__xnsched_rt_requeue(thread);
+		}
+	}
 }
 
 static inline bool xnsched_setparam(struct xnthread *thread,
@@ -645,8 +633,11 @@ static inline bool xnsched_setparam(struct xnthread *thread,
 
 	if (sched_class == &xnsched_class_idle)
 		return __xnsched_idle_setparam(thread, p);
-
-	return __xnsched_rt_setparam(thread, p);
+	
+	if(thread->next_deadline)
+		return __xnsched_dyna_setparam(thread,p);
+	else
+		return __xnsched_rt_setparam(thread,p);
 }
 
 static inline void xnsched_getparam(struct xnthread *thread,
@@ -656,6 +647,8 @@ static inline void xnsched_getparam(struct xnthread *thread,
 
 	if (sched_class == &xnsched_class_idle)
 		__xnsched_idle_getparam(thread, p);
+	else if (thread->next_deadline)
+		__xnsched_dyna_getparam(thread, p);
 	else
 		__xnsched_rt_getparam(thread, p);
 }

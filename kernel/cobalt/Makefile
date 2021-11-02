@@ -1,16 +1,15 @@
-obj-$(CONFIG_XENOMAI) += xenomai.o rtdm/ posix/
+obj-$(CONFIG_XENOMAI) += pipeline/ xenomai.o rtdm/ posix/
 
-xenomai-y :=	apc.o		\
-		arith.o 	\
+xenomai-y :=	arith.o 	\
 		bufd.o		\
 		clock.o		\
 		heap.o		\
 		init.o		\
-		intr.o		\
 		lock.o		\
 		registry.o	\
 		sched-idle.o	\
 		sched-rt.o	\
+		sched-dyna.o  \
 		sched.o		\
 		select.o	\
 		synch.o		\

@@ -22,6 +22,7 @@
 #include <linux/wait.h>
 #include <linux/sched.h>
 #include <linux/sched/rt.h>
+#include <pipeline/thread.h>
 #include <cobalt/kernel/list.h>
 #include <cobalt/kernel/stat.h>
 #include <cobalt/kernel/timer.h>
@@ -38,7 +39,7 @@
  * @addtogroup cobalt_core_thread
  * @{
  */
-#define XNTHREAD_BLOCK_BITS   (XNSUSP|XNPEND|XNDELAY|XNDORMANT|XNRELAX|XNMIGRATE|XNHELD|XNDBGSTOP)
+#define XNTHREAD_BLOCK_BITS   (XNSUSP|XNPEND|XNDELAY|XNDORMANT|XNRELAX|XNHELD|XNDBGSTOP)
 #define XNTHREAD_MODE_BITS    (XNRRB|XNWARN|XNTRAPLB)
 
 struct xnthread;
@@ -120,6 +121,12 @@ struct xnthread {
 	 * Weighted priority (cprio + scheduling class weight).
 	 */
 	int wprio;
+
+	/**
+	 * The next deadline, usefull only in EDF scheduling 
+	 */
+
+	xnticks_t next_deadline;
 
 	int lock_count;	/** Scheduler lock count. */
 
@@ -372,7 +379,7 @@ void __xnthread_discard(struct xnthread *thread);
  */
 static inline struct xnthread *xnthread_current(void)
 {
-	return ipipe_current_threadinfo()->thread;
+	return pipeline_current()->thread;
 }
 
 /**
@@ -388,7 +395,7 @@ static inline struct xnthread *xnthread_current(void)
  */
 static inline struct xnthread *xnthread_from_task(struct task_struct *p)
 {
-	return ipipe_task_threadinfo(p)->thread;
+	return pipeline_thread_from_task(p);
 }
 
 /**
@@ -425,10 +432,6 @@ void xnthread_switch_fpu(struct xnsched *sched);
 #else
 static inline void xnthread_switch_fpu(struct xnsched *sched) { }
 #endif /* CONFIG_XENO_ARCH_FPU */
-
-void xnthread_init_shadow_tcb(struct xnthread *thread);
-
-void xnthread_init_root_tcb(struct xnthread *thread);
 
 void xnthread_deregister(struct xnthread *thread);
 

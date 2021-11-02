@@ -327,6 +327,84 @@ fail_syncinit:
 	return ret;
 }
 
+static int create_tcb_dyna(struct alchemy_task **tcbp, RT_TASK *task,
+		      const char *name, xnticks_t next_deadline, int mode)
+{
+	struct threadobj_init_data idata;
+	struct alchemy_task *tcb;
+	int ret;
+
+	if (threadobj_irq_p())
+		return -EPERM;
+
+	tcb = threadobj_alloc(struct alchemy_task, thobj,
+			      union alchemy_wait_union);
+	if (tcb == NULL)
+		return -ENOMEM;
+
+	generate_name(tcb->name, name, &task_namegen);
+
+	tcb->mode = mode;
+	tcb->entry = NULL;	/* Not yet known. */
+	tcb->arg = NULL;
+
+	CPU_ZERO(&tcb->affinity);
+
+	ret = syncobj_init(&tcb->sobj_msg, CLOCK_COPPERPLATE,
+			   SYNCOBJ_PRIO, fnref_null);
+	if (ret)
+		goto fail_syncinit;
+
+	tcb->suspends = 0;
+	tcb->flowgen = 0;
+
+	idata.magic = task_magic;
+	idata.finalizer = task_finalizer;
+	idata.policy = next_deadline ? SCHED_DEADLINE : SCHED_OTHER;
+	idata.param_ex.sched_u.deadline.sched_absolute_deadline = next_deadline;
+	idata.param_ex.sched_u.deadline.sched_relative_deadline = next_deadline;
+	ret = threadobj_init(&tcb->thobj, &idata);
+	if (ret)
+		goto fail_threadinit;
+
+	*tcbp = tcb;
+
+	/*
+	 * CAUTION: The task control block must be fully built before
+	 * we publish it through syncluster_addobj(), at which point
+	 * it could be referred to immediately from another task as we
+	 * got preempted. In addition, the task descriptor must be
+	 * updated prior to starting the task.
+	 */
+	tcb->self.handle = mainheap_ref(tcb, uintptr_t);
+
+	registry_init_file_obstack(&tcb->fsobj, &registry_ops);
+	ret = __bt(registry_add_file(&tcb->fsobj, O_RDONLY,
+				     "/alchemy/tasks/%s", tcb->name));
+	if (ret)
+		warning("failed to export task %s to registry, %s",
+			tcb->name, symerror(ret));
+
+	ret = syncluster_addobj(&alchemy_task_table, tcb->name, &tcb->cobj);
+	if (ret)
+		goto fail_register;
+
+	if (task)
+		task->handle = tcb->self.handle;
+
+	return 0;
+
+fail_register:
+	registry_destroy_file(&tcb->fsobj);
+	threadobj_uninit(&tcb->thobj);
+fail_threadinit:
+	syncobj_uninit(&tcb->sobj_msg);
+fail_syncinit:
+	threadobj_free(&tcb->thobj);
+
+	return ret;
+}
+
 /**
  * @fn int rt_task_create(RT_TASK *task, const char *name, int stksize, int prio, int mode)
  * @brief Create a task with Alchemy personality.
@@ -408,6 +486,7 @@ fail_syncinit:
  * @note Tasks can be referred to from multiple processes which all
  * belong to the same Xenomai session.
  */
+//Tache principale dans le main
 #ifndef DOXYGEN_CPP
 CURRENT_IMPL(int, rt_task_create, (RT_TASK *task, const char *name,
 				   int stksize, int prio, int mode))
@@ -425,8 +504,63 @@ int rt_task_create(RT_TASK *task, const char *name,
 		return -EINVAL;
 
 	CANCEL_DEFER(svc);
-
+	//Ici on créer la tâche alchemy
 	ret = create_tcb(&tcb, task, name, prio, mode);
+	if (ret)
+		goto out;
+
+	/* We want this to be set prior to spawning the thread. */
+	tcb->self = *task;
+
+	cta.detachstate = mode & T_JOINABLE ?
+		PTHREAD_CREATE_JOINABLE : PTHREAD_CREATE_DETACHED;
+	cta.policy = threadobj_get_policy(&tcb->thobj);
+	threadobj_copy_schedparam(&cta.param_ex, &tcb->thobj);
+	cta.prologue = task_prologue_1;
+	cta.run = task_entry;
+	cta.arg = tcb;
+	cta.stacksize = stksize;
+
+	ret = __bt(copperplate_create_thread(&cta, &tcb->thobj.ptid));
+	if (ret) {
+		delete_tcb(tcb);
+	} else {
+		tcb->self.thread = tcb->thobj.ptid;
+		task->thread = tcb->thobj.ptid;
+	}
+out:
+	CANCEL_RESTORE(svc);
+
+	return ret;
+}
+
+//next_deadline est ici relatif
+#ifndef DOXYGEN_CPP
+CURRENT_IMPL(int, rt_task_create_dyna, (RT_TASK *task, const char *name,
+				   int stksize, xnticks_t next_deadline, int mode))
+#else
+int rt_task_create_dyna(RT_TASK *task, const char *name,
+		   int stksize, xnticks_t next_deadline, int mode)
+#endif
+{
+	struct corethread_attributes cta;
+	struct alchemy_task *tcb;
+	struct service svc;
+	int ret;
+
+	if (mode & ~(T_LOCK | T_WARNSW | T_JOINABLE))
+		return -EINVAL;
+
+	//The next deadline must be in the past
+	if(next_deadline <= 0)
+		return -EINVAL;
+	
+	next_deadline += rt_timer_read();
+
+	CANCEL_DEFER(svc);
+
+	//Ici on créer la tâche alchemy
+	ret = create_tcb_dyna(&tcb, task, name, next_deadline, mode);
 	if (ret)
 		goto out;
 
@@ -926,6 +1060,7 @@ int rt_task_wait_period(unsigned long *overruns_r)
 		return -EPERM;
 
 	return threadobj_wait_period(overruns_r);
+	
 }
 
 /**
