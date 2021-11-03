@@ -18,7 +18,6 @@
  */
 #include <linux/percpu.h>
 #include <linux/errno.h>
-#include <linux/ipipe_tickdev.h>
 #include <cobalt/kernel/sched.h>
 #include <cobalt/kernel/timer.h>
 #include <cobalt/kernel/clock.h>
@@ -33,23 +32,10 @@
  *
  * @{
  */
-unsigned long nktimerlat;
-
-static unsigned long long clockfreq;
-
-#ifdef XNARCH_HAVE_LLMULSHFT
-
-static unsigned int tsc_scale, tsc_shift;
 
 #ifdef XNARCH_HAVE_NODIV_LLIMD
 
-static struct xnarch_u32frac tsc_frac;
 static struct xnarch_u32frac bln_frac;
-
-long long xnclock_core_ns_to_ticks(long long ns)
-{
-	return xnarch_nodiv_llimd(ns, tsc_frac.frac, tsc_frac.integ);
-}
 
 unsigned long long xnclock_divrem_billion(unsigned long long value,
 					  unsigned long *rem)
@@ -67,57 +53,17 @@ unsigned long long xnclock_divrem_billion(unsigned long long value,
 	return q;
 }
 
-#else /* !XNARCH_HAVE_NODIV_LLIMD */
+#else
 
-long long xnclock_core_ns_to_ticks(long long ns)
-{
-	return xnarch_llimd(ns, 1 << tsc_shift, tsc_scale);
-}
-
-#endif /* !XNARCH_HAVE_NODIV_LLIMD */
-
-xnsticks_t xnclock_core_ticks_to_ns(xnsticks_t ticks)
-{
-	return xnarch_llmulshft(ticks, tsc_scale, tsc_shift);
-}
-
-xnsticks_t xnclock_core_ticks_to_ns_rounded(xnsticks_t ticks)
-{
-	unsigned int shift = tsc_shift - 1;
-	return (xnarch_llmulshft(ticks, tsc_scale, shift) + 1) / 2;
-}
-
-#else  /* !XNARCH_HAVE_LLMULSHFT */
-
-xnsticks_t xnclock_core_ticks_to_ns(xnsticks_t ticks)
-{
-	return xnarch_llimd(ticks, 1000000000, clockfreq);
-}
-
-xnsticks_t xnclock_core_ticks_to_ns_rounded(xnsticks_t ticks)
-{
-	return (xnarch_llimd(ticks, 1000000000, clockfreq/2) + 1) / 2;
-}
-
-xnsticks_t xnclock_core_ns_to_ticks(xnsticks_t ns)
-{
-	return xnarch_llimd(ns, clockfreq, 1000000000);
-}
-
-#endif /* !XNARCH_HAVE_LLMULSHFT */
-
-#ifndef XNARCH_HAVE_NODIV_LLIMD
 unsigned long long xnclock_divrem_billion(unsigned long long value,
 					  unsigned long *rem)
 {
 	return xnarch_ulldiv(value, 1000000000, rem);
 
 }
+
 #endif /* !XNARCH_HAVE_NODIV_LLIMD */
 
-EXPORT_SYMBOL_GPL(xnclock_core_ticks_to_ns);
-EXPORT_SYMBOL_GPL(xnclock_core_ticks_to_ns_rounded);
-EXPORT_SYMBOL_GPL(xnclock_core_ns_to_ticks);
 EXPORT_SYMBOL_GPL(xnclock_divrem_billion);
 
 DEFINE_PRIVATE_XNLOCK(ratelimit_lock);
@@ -222,13 +168,13 @@ void xnclock_core_local_shot(struct xnsched *sched)
 
 	xntrace_tick((unsigned)delay);
 
-	ipipe_timer_set(delay);
+	pipeline_set_timer_shot(delay);
 }
 
 #ifdef CONFIG_SMP
 void xnclock_core_remote_shot(struct xnsched *sched)
 {
-	ipipe_send_ipi(IPIPE_HRTIMER_IPI, *cpumask_of(xnsched_cpu(sched)));
+	pipeline_send_timer_ipi(cpumask_of(xnsched_cpu(sched)));
 }
 #endif
 
@@ -347,12 +293,6 @@ void xnclock_adjust(struct xnclock *clock, xnsticks_t delta)
 	adjust_clock_timers(clock, delta);
 }
 EXPORT_SYMBOL_GPL(xnclock_adjust);
-
-xnticks_t xnclock_get_host_time(void)
-{
-	return ktime_to_ns(ktime_get_real());
-}
-EXPORT_SYMBOL_GPL(xnclock_get_host_time);
 
 xnticks_t xnclock_core_read_monotonic(void)
 {
@@ -513,10 +453,8 @@ void print_core_clock_status(struct xnclock *clock,
 #endif /* CONFIG_XENO_OPT_WATCHDOG */
 
 	xnvfile_printf(it, "%8s: timer=%s, clock=%s\n",
-		       "devices", ipipe_timer_name(), ipipe_clock_name());
+		       "devices", pipeline_timer_name(), pipeline_clock_name());
 	xnvfile_printf(it, "%8s: %s\n", "watchdog", wd_status);
-	xnvfile_printf(it, "%8s: %Lu\n", "setup",
-		       xnclock_ticks_to_ns(&nkclock, nktimerlat));
 }
 
 static int clock_show(struct xnvfile_regular_iterator *it, void *data)
@@ -830,23 +768,6 @@ void xnclock_tick(struct xnclock *clock)
 }
 EXPORT_SYMBOL_GPL(xnclock_tick);
 
-void xnclock_update_freq(unsigned long long freq)
-{
-	spl_t s;
-
-	xnlock_get_irqsave(&nklock, s);
-	clockfreq = freq;
-#ifdef XNARCH_HAVE_LLMULSHFT
-	xnarch_init_llmulshft(1000000000, freq, &tsc_scale, &tsc_shift);
-#ifdef XNARCH_HAVE_NODIV_LLIMD
-	xnarch_init_u32frac(&tsc_frac, 1 << tsc_shift, tsc_scale);
-	xnarch_init_u32frac(&bln_frac, 1, 1000000000);
-#endif
-#endif
-	cobalt_pipeline.clock_freq = freq;
-	xnlock_put_irqrestore(&nklock, s);
-}
-
 static int set_core_clock_gravity(struct xnclock *clock,
 				  const struct xnclock_gravity *p)
 {
@@ -860,11 +781,8 @@ static void reset_core_clock_gravity(struct xnclock *clock)
 	struct xnclock_gravity gravity;
 
 	xnarch_get_latencies(&gravity);
-	gravity.user += nktimerlat;
 	if (gravity.kernel == 0)
 		gravity.kernel = gravity.user;
-	if (gravity.irq == 0)
-		gravity.irq = nktimerlat;
 	set_core_clock_gravity(clock, &gravity);
 }
 
@@ -887,10 +805,12 @@ void xnclock_cleanup(void)
 	xnclock_deregister(&nkclock);
 }
 
-int __init xnclock_init(unsigned long long freq)
+int __init xnclock_init()
 {
-	xnclock_update_freq(freq);
-	nktimerlat = xnarch_timer_calibrate();
+#ifdef XNARCH_HAVE_NODIV_LLIMD
+	xnarch_init_u32frac(&bln_frac, 1, 1000000000);
+#endif
+	pipeline_init_clock();
 	xnclock_reset_gravity(&nkclock);
 	xnclock_register(&nkclock, &xnsched_realtime_cpus);
 

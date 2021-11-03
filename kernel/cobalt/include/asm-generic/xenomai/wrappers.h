@@ -20,10 +20,6 @@
 
 #include <linux/xenomai/wrappers.h>
 
-#ifdef CONFIG_IPIPE_LEGACY
-#error "CONFIG_IPIPE_LEGACY must be switched off"
-#endif
-
 #define COBALT_BACKPORT(__sym) __cobalt_backport_ ##__sym
 
 /*
@@ -164,6 +160,10 @@ devm_hwmon_device_register_with_groups(struct device *dev, const char *name,
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,2,0)
 #define mmiowb()		do { } while (0)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,4,0)
+#define __kernel_old_timeval	timeval
 #endif
 
 #endif /* _COBALT_ASM_GENERIC_WRAPPERS_H */

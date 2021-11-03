@@ -23,7 +23,7 @@
 #include <cobalt/kernel/sched.h>
 #include <cobalt/kernel/synch.h>
 #include <cobalt/kernel/select.h>
-#include <cobalt/kernel/apc.h>
+#include <pipeline/sirq.h>
 
 /**
  * @ingroup cobalt_core
@@ -49,7 +49,7 @@
  */
 
 static LIST_HEAD(selector_list);
-static int deletion_apc;
+static int deletion_virq;
 
 /**
  * Initialize a @a struct @a xnselect structure.
@@ -399,12 +399,12 @@ void xnselector_destroy(struct xnselector *selector)
 
 	xnlock_get_irqsave(&nklock, s);
 	list_add_tail(&selector->destroy_link, &selector_list);
-	__xnapc_schedule(deletion_apc);
+	pipeline_post_sirq(deletion_virq);
 	xnlock_put_irqrestore(&nklock, s);
 }
 EXPORT_SYMBOL_GPL(xnselector_destroy);
 
-static void xnselector_destroy_loop(void *cookie)
+static irqreturn_t xnselector_destroy_loop(int virq, void *dev_id)
 {
 	struct xnselect_binding *binding, *tmpb;
 	struct xnselector *selector, *tmps;
@@ -439,21 +439,22 @@ static void xnselector_destroy_loop(void *cookie)
 	}
 out:
 	xnlock_put_irqrestore(&nklock, s);
+
+	return IRQ_HANDLED;
 }
 
 int xnselect_mount(void)
 {
-	deletion_apc = xnapc_alloc("selector_list_destroy",
-				   xnselector_destroy_loop, NULL);
-	if (deletion_apc < 0)
-		return deletion_apc;
+	deletion_virq = pipeline_create_inband_sirq(xnselector_destroy_loop);
+	if (deletion_virq < 0)
+		return deletion_virq;
 
 	return 0;
 }
 
 int xnselect_umount(void)
 {
-	xnapc_free(deletion_apc);
+	pipeline_delete_inband_sirq(deletion_virq);
 	return 0;
 }
 

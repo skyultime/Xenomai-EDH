@@ -29,6 +29,7 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <limits.h>
+#include <sched.h>
 #include "boilerplate/signal.h"
 #include "boilerplate/atomic.h"
 #include "boilerplate/lock.h"
@@ -1664,16 +1665,21 @@ int threadobj_wait_period(unsigned long *overruns_r)
 	struct threadobj *current = threadobj_current();
 	siginfo_t si;
 	int sig;
-	struct xnsched *sched;
-
+	
+	#if 0
+	  struct xnsched *sched;
+	#endif
+	
 	if (!(current->status & __THREAD_S_PERIODIC))
 		return -EWOULDBLOCK;
 
 	for (;;) {
 		current->run_state = __THREAD_S_DELAYED;
 		sig = __RT(sigwaitinfo(&sigperiod_set, &si));
-		if(current->schedparam.sched_u.deadline.sched_relative_deadline != 0)//We have to requeue the xnthread
+		
+		/*if(current->schedparam.sched_u.deadline.sched_relative_deadline != 0)//We have to requeue the xnthread
 			sched = xnsched_struct(cpumask_first(CPU_MASK_ALL));
+		*/
 		current->run_state = __THREAD_S_RUNNING;
 		if (sig == SIGPERIOD)
 			break;

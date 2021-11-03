@@ -17,13 +17,13 @@
  */
 #include <linux/types.h>
 #include <linux/errno.h>
-#include <linux/ipipe.h>
 #include <linux/kconfig.h>
 #include <linux/atomic.h>
 #include <linux/printk.h>
 #include <cobalt/kernel/init.h>
 #include <cobalt/kernel/thread.h>
 #include <xenomai/version.h>
+#include <pipeline/tick.h>
 #include <asm/xenomai/syscall.h>
 #include "corectl.h"
 
@@ -89,7 +89,7 @@ static int do_conf_option(int option, void __user *u_buf, size_t u_bufsz)
 		val = realtime_core_state();
 		break;
 	default:
-		if (!ipipe_root_p)
+		if (is_primary_domain())
 			/* Switch to secondary mode first. */
 			return -ENOSYS;
 		vec.u_buf = u_buf;
@@ -148,7 +148,7 @@ static int stop_services(const void __user *u_buf, size_t u_bufsz)
 		ret = xnthread_killall(final_grace_period, 0);
 		if (ret == -EAGAIN)
 			printk(XENO_WARNING "some RTDM tasks won't stop");
-		xntimer_release_hardware();
+		pipeline_uninstall_tick_proxy();
 		set_realtime_core_state(COBALT_STATE_STOPPED);
 		printk(XENO_INFO "services stopped\n");
 		break;
@@ -171,7 +171,7 @@ static int start_services(void)
 	case COBALT_STATE_RUNNING:
 		break;
 	case COBALT_STATE_STOPPED:
-		xntimer_grab_hardware();
+		pipeline_install_tick_proxy();
 		cobalt_call_state_chain(COBALT_STATE_WARMUP);
 		set_realtime_core_state(COBALT_STATE_RUNNING);
 		printk(XENO_INFO "services started\n");

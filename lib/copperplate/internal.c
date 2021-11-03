@@ -70,7 +70,7 @@ int copperplate_create_thread(struct corethread_attributes *cta,
 	return __bt(thread_spawn_epilogue(cta));
 }
 
-int copperplate_roll_dynamic_priority(pthread_t ptid, xnticks_t deadline)
+//int copperplate_roll_dynamic_priority(pthread_t ptid, xnticks_t deadline)
 	
 
 int copperplate_renice_local_thread(pthread_t ptid, int policy,

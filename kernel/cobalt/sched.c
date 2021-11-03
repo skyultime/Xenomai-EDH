@@ -455,7 +455,7 @@ int xnsched_set_policy(struct xnthread *thread,
 	/*
 	 * This is the ONLY place where calling xnsched_setparam() is
 	 * legit, sane and safe.
-	 */nt
+	 */
 	effective = xnsched_setparam(thread, p);
 	if (effective) {
 		thread->sched_class = sched_class;

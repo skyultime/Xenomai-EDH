@@ -19,7 +19,8 @@
 #ifndef _COBALT_KERNEL_CLOCK_H
 #define _COBALT_KERNEL_CLOCK_H
 
-#include <linux/ipipe.h>
+#include <pipeline/pipeline.h>
+#include <pipeline/clock.h>
 #include <cobalt/kernel/list.h>
 #include <cobalt/kernel/vfile.h>
 #include <cobalt/uapi/kernel/types.h>
@@ -31,6 +32,7 @@
 
 struct xnsched;
 struct xntimerdata;
+struct timex;
 
 struct xnclock_gravity {
 	unsigned long irq;
@@ -102,8 +104,6 @@ struct xnclock_ratelimit_state {
 
 extern struct xnclock nkclock;
 
-extern unsigned long nktimerlat;
-
 int xnclock_register(struct xnclock *clock,
 		     const cpumask_t *affinity);
 
@@ -128,9 +128,7 @@ xnticks_t xnclock_core_read_monotonic(void);
 
 static inline xnticks_t xnclock_core_read_raw(void)
 {
-	unsigned long long t;
-	ipipe_read_tsc(t);
-	return t;
+	return pipeline_read_cycle_counter();
 }
 
 /* We use the Linux defaults */
@@ -330,8 +328,6 @@ static inline xnticks_t xnclock_read_realtime(struct xnclock *clock)
 unsigned long long xnclock_divrem_billion(unsigned long long value,
 					  unsigned long *rem);
 
-xnticks_t xnclock_get_host_time(void);
-
 #ifdef CONFIG_XENO_OPT_VFILE
 
 void xnclock_init_proc(void);
@@ -350,9 +346,7 @@ static inline void xnclock_init_proc(void) { }
 static inline void xnclock_cleanup_proc(void) { }
 #endif
 
-void xnclock_update_freq(unsigned long long freq);
-
-int xnclock_init(unsigned long long freq);
+int xnclock_init(void);
 
 void xnclock_cleanup(void);
 

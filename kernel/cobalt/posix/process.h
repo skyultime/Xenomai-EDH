@@ -20,10 +20,8 @@
 
 #include <linux/list.h>
 #include <linux/bitmap.h>
+#include <pipeline/thread.h>
 #include <cobalt/kernel/ppd.h>
-
-#define KEVENT_PROPAGATE   0
-#define KEVENT_STOP        1
 
 #define NR_PERSONALITIES  4
 #if BITS_PER_LONG < NR_PERSONALITIES
@@ -94,13 +92,13 @@ extern struct cobalt_resources cobalt_global_resources;
 
 static inline struct cobalt_process *cobalt_current_process(void)
 {
-	return ipipe_current_threadinfo()->process;
+	return pipeline_current()->process;
 }
 
 static inline struct cobalt_process *
 cobalt_set_process(struct cobalt_process *process)
 {
-	struct ipipe_threadinfo *p = ipipe_current_threadinfo();
+	struct cobalt_threadinfo *p = pipeline_current();
 	struct cobalt_process *old;
 
 	old = p->process;
@@ -148,6 +146,10 @@ void cobalt_del_resource(struct cobalt_resnode *node)
 {
 	list_del(&node->next);
 }
+
+void cobalt_remove_process(struct cobalt_process *process);
+
+void cobalt_signal_yield(void);
 
 extern struct xnthread_personality *cobalt_personalities[];
 

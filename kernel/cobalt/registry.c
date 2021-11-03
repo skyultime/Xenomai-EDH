@@ -21,8 +21,8 @@
 #include <cobalt/kernel/heap.h>
 #include <cobalt/kernel/registry.h>
 #include <cobalt/kernel/thread.h>
-#include <cobalt/kernel/apc.h>
 #include <cobalt/kernel/assert.h>
+#include <pipeline/sirq.h>
 
 /**
  * @ingroup cobalt_core
@@ -62,13 +62,13 @@ static struct xnsynch register_synch;
 
 static void proc_callback(struct work_struct *work);
 
-static void registry_proc_schedule(void *cookie);
+static irqreturn_t registry_proc_schedule(int virq, void *dev_id);
 
 static LIST_HEAD(proc_object_list);	/* Objects waiting for /proc handling. */
 
 static DECLARE_WORK(registry_proc_work, proc_callback);
 
-static int proc_apc;
+static int proc_virq;
 
 static struct xnvfile_directory registry_vfroot;
 
@@ -124,13 +124,11 @@ int xnregistry_init(void)
 		return ret;
 	}
 
-	proc_apc =
-	    xnapc_alloc("registry_export", &registry_proc_schedule, NULL);
-
-	if (proc_apc < 0) {
+	proc_virq = pipeline_create_inband_sirq(registry_proc_schedule);
+	if (proc_virq < 0) {
 		xnvfile_destroy_regular(&usage_vfile);
 		xnvfile_destroy_dir(&registry_vfroot);
-		return proc_apc;
+		return proc_virq;
 	}
 #endif /* CONFIG_XENO_OPT_VFILE */
 
@@ -153,7 +151,7 @@ int xnregistry_init(void)
 #ifdef CONFIG_XENO_OPT_VFILE
 		xnvfile_destroy_regular(&usage_vfile);
 		xnvfile_destroy_dir(&registry_vfroot);
-		xnapc_free(proc_apc);
+		pipeline_delete_inband_sirq(proc_virq);
 #endif /* CONFIG_XENO_OPT_VFILE */
 		return -ENOMEM;
 	}
@@ -199,7 +197,7 @@ void xnregistry_cleanup(void)
 	xnsynch_destroy(&register_synch);
 
 #ifdef CONFIG_XENO_OPT_VFILE
-	xnapc_free(proc_apc);
+	pipeline_delete_inband_sirq(proc_virq);
 	flush_scheduled_work();
 	xnvfile_destroy_regular(&usage_vfile);
 	xnvfile_destroy_dir(&registry_vfroot);
@@ -328,13 +326,15 @@ static void proc_callback(struct work_struct *work)
 	up(&export_mutex);
 }
 
-static void registry_proc_schedule(void *cookie)
+static irqreturn_t registry_proc_schedule(int virq, void *dev_id)
 {
 	/*
 	 * schedule_work() will check for us if the work has already
 	 * been scheduled, so just be lazy and submit blindly.
 	 */
 	schedule_work(&registry_proc_work);
+
+	return IRQ_HANDLED;
 }
 
 static int registry_export_vfsnap(struct xnobject *object,
@@ -469,7 +469,7 @@ static inline void registry_export_pnode(struct xnobject *object,
 	object->pnode = pnode;
 	list_del(&object->link);
 	list_add_tail(&object->link, &proc_object_list);
-	__xnapc_schedule(proc_apc);
+	pipeline_post_sirq(proc_virq);
 }
 
 static inline void registry_unexport_pnode(struct xnobject *object)
@@ -485,7 +485,7 @@ static inline void registry_unexport_pnode(struct xnobject *object)
 			object->pnode->ops->touch(object);
 		list_del(&object->link);
 		list_add_tail(&object->link, &proc_object_list);
-		__xnapc_schedule(proc_apc);
+		pipeline_post_sirq(proc_virq);
 	} else {
 		/*
 		 * Unexporting before the lower stage has had a chance
@@ -852,7 +852,7 @@ int xnregistry_remove(xnhandle_t handle)
 			 */
 			if (object->pnode) {
 				xnlock_put_irqrestore(&nklock, s);
-				if (ipipe_root_p)
+				if (is_secondary_domain())
 					flush_work(&registry_proc_work);
 				return 0;
 			}
