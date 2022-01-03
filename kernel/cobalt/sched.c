@@ -295,6 +295,9 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
 	struct xnthread *curr = sched->curr;
 	struct xnthread *thread;
 
+        bool use_EDH = false;
+	int WCET = 0;
+
 	if (!xnthread_test_state(curr, XNTHREAD_BLOCK_BITS | XNZOMBIE)) {
 		/*
 		 * Do not preempt the current thread if it holds the
@@ -315,6 +318,39 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
 		}
 	}
 
+        /********************************************************/
+
+	struct list_head *q = &sched->rt.runnable;
+	struct xnthread *b_thread;
+
+	if (list_empty(q))
+		goto no_battery;
+
+	list_for_each_entry(b_thread, q, rlink) {
+  	    if (unlikely(b_thread->sched_class == &xnsched_class_dyna)){
+                //Search through EDF thread
+                if (b_thread->use_EDH == true){
+                  use_EDH = true;
+                  goto battery;
+                }
+	    }
+	}
+
+        /******************************************************/
+        battery:
+	  // Access battery data only if one of following task use EDH scheduling class
+          if(use_EDH){
+            Msg_battery my_msg_battery = battery_read_msg();
+        
+            if (my_msg_battery.message_integrity == true){
+   	      rt_printf(
+                "chargenow :%d\ncapacity:%d\n",my_msg_battery.chargenow,my_msg_battery.capacity
+              );      
+  	    }
+          }
+  
+        no_battery:
+
 	/*
 	 * Find the runnable thread having the highest priority among
 	 * all scheduling classes, scanned by decreasing priority.
@@ -322,6 +358,9 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
 #ifdef CONFIG_XENO_OPT_SCHED_CLASSES
 	for_each_xnsched_class(p) {
 		thread = p->sched_pick(sched);
+
+		//TODO Alexy : Same as below for !CONFIG_XENO_OPT_SCHED_CLASSES
+
 		if (thread) {
 			set_thread_running(sched, thread);
 			return thread;
@@ -333,6 +372,14 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
 	thread = xnsched_rt_pick(sched);
 	if (unlikely(thread == NULL))
 		thread = &sched->rootcb;
+
+         if (use_EDH){
+           // if we don't have sufficient energy,
+           // need to call the idle task (thread = &sched->rootcb) and wait for the battery to be fill up again
+	   
+	   //TODO EDF computation
+           WCET = thread->WCET;
+         }
 
 	set_thread_running(sched, thread);
 
@@ -455,7 +502,7 @@ int xnsched_set_policy(struct xnthread *thread,
 	/*
 	 * This is the ONLY place where calling xnsched_setparam() is
 	 * legit, sane and safe.
-	 */nt
+	 */
 	effective = xnsched_setparam(thread, p);
 	if (effective) {
 		thread->sched_class = sched_class;

@@ -90,9 +90,11 @@ enum {
 	sched_quota_set,
 	sched_quota_get,
 };
-struct __sched_deadline_param {
+struct __sched_dyna_param {
 	__u64 sched_absolute_deadline;
 	__u64 sched_relative_deadline;
+	int WCET;
+        bool use_EDH;
 };
 
 struct __sched_config_quota {
@@ -130,7 +132,7 @@ struct sched_param_ex {
 		struct __sched_rr_param rr;
 		struct __sched_tp_param tp;
 		struct __sched_quota_param quota;
-		struct __sched_deadline_param deadline;
+		struct __sched_dyna_param dyna;
 	} sched_u;
 };
 

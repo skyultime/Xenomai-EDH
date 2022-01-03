@@ -25,16 +25,18 @@ struct __sched_rr_param {
 	struct timespec __sched_rr_quantum;
 };
 
-struct __sched_deadline_param {
+struct __sched_dyna_param {
 	__u64 sched_absolute_deadline;
 	__u64 sched_relative_deadline;
+	int WCET;
+        bool use_EDH;
 };
 
 struct sched_param_ex {
 	int sched_priority;
 	union {
 		struct __sched_rr_param rr;
-		struct __sched_deadline_param deadline;
+		struct __sched_dyna_param dyna;
 	} sched_u;
 };
 

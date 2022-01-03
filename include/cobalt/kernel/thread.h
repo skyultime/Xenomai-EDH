@@ -123,7 +123,7 @@ struct xnthread {
 	int wprio;
 
 	/**
-	 * The next deadline, usefull only in EDF scheduling 
+	 * The next deadline, useful only in EDF scheduling 
 	 */
 
 	xnticks_t next_deadline;
