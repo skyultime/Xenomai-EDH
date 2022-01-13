@@ -1,6 +1,7 @@
 obj-$(CONFIG_XENOMAI) += pipeline/ xenomai.o rtdm/ posix/
 
 xenomai-y :=	arith.o 	\
+		batt.o          \
 		bufd.o		\
 		clock.o		\
 		heap.o		\
@@ -9,7 +10,7 @@ xenomai-y :=	arith.o 	\
 		registry.o	\
 		sched-idle.o	\
 		sched-rt.o	\
-		sched-dyna.o  \
+		sched-dyna.o    \
 		sched.o		\
 		select.o	\
 		synch.o		\

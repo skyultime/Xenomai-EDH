@@ -28,8 +28,9 @@ struct __sched_rr_param {
 struct __sched_dyna_param {
 	__u64 sched_absolute_deadline;
 	__u64 sched_relative_deadline;
-	int WCET;
-        bool use_EDH;
+	double WCET;
+	double WCEC;
+        dyna_policy policy;
 };
 
 struct sched_param_ex {

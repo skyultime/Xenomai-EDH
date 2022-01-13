@@ -539,10 +539,12 @@ out:
 //next_deadline est ici relatif
 #ifndef DOXYGEN_CPP
 CURRENT_IMPL(int, rt_task_create_dyna, (RT_TASK *task, const char *name,
-				   int stksize, xnticks_t next_deadline, int mode))
+				   int stksize, xnticks_t next_deadline,double WCET,double WCEC,
+                                   dyna_policy policy, int mode))
 #else
 int rt_task_create_dyna(RT_TASK *task, const char *name,
-		   int stksize, xnticks_t next_deadline, int mode)
+		   int stksize, xnticks_t next_deadline,double WCET,double WCEC,
+                   dyna_policy policy, int mode)
 #endif
 {
 	struct corethread_attributes cta;

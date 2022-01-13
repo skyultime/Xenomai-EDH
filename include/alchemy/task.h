@@ -105,8 +105,9 @@ CURRENT_DECL(int, rt_task_create_dyna(RT_TASK *task,
 				 const char *name,
 				 int stksize,
 				 xnticks_t next_deadline,
-				 int WCET,
-                                 bool use_EDH,
+				 double WCET,
+				 double WCEC,
+                                 dyna_policy policy,
 				 int mode));
 
 int rt_task_delete(RT_TASK *task);
@@ -124,7 +125,7 @@ CURRENT_DECL(int, rt_task_spawn(RT_TASK *task, const char *name,
 				void *arg));
 
 CURRENT_DECL(int, rt_task_spawn_dyna(RT_TASK *task, const char *name,
-				int stksize, xnticks_t next_deadline,int WCET,bool use_EDH, int mode,
+				int stksize, xnticks_t next_deadline,double WCET,double WCEC,dyna_policy policy, int mode,
 				void (*entry)(void *arg),
 				void *arg));
 
