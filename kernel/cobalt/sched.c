@@ -26,6 +26,7 @@
 #include <cobalt/kernel/intr.h>
 #include <cobalt/kernel/heap.h>
 #include <cobalt/kernel/arith.h>
+#include <cobalt/kernel/batt.h>
 #include <cobalt/uapi/signal.h>
 #include <pipeline/sched.h>
 #define CREATE_TRACE_POINTS
@@ -294,9 +295,27 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
 	struct xnsched_class *p __maybe_unused;
 	struct xnthread *curr = sched->curr;
 	struct xnthread *thread;
+	
+	/*EDH Param */	
+        Msg_battery my_msg_battery = {0,0,0,0,0,false};
 
-        bool use_EDH = false;
-	int WCET = 0;
+        bool use_EDH      = false;
+	bool is_proc_idle = false;
+
+	double WCEC = 0;
+	double WCET = 0;
+
+	int total_proc_demand   = 0; //Processor demand at time T
+	double total_WCET_unfinish = 0; //Remaining execution time for unfinished tasks
+
+	int slack_time      = 0;
+	int slack_energy    = 0;
+	int energy_demand   = 0;
+	int energy_produced = 0;
+
+	int total_energy    = 0;
+
+	/* End EDH Param */
 
 	if (!xnthread_test_state(curr, XNTHREAD_BLOCK_BITS | XNZOMBIE)) {
 		/*
@@ -322,6 +341,7 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
 
 	struct list_head *q = &sched->rt.runnable;
 	struct xnthread *b_thread;
+        union xnsched_policy_param param;
 
 	if (list_empty(q))
 		goto no_battery;
@@ -329,7 +349,10 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
 	list_for_each_entry(b_thread, q, rlink) {
   	    if (unlikely(b_thread->sched_class == &xnsched_class_dyna)){
                 //Search through EDF thread
-                if (b_thread->use_EDH == true){
+                b_thread->sched_class->sched_getparam(b_thread, &param);
+
+
+                if (param.rt.policy == EDH_ASAP || param.rt.policy == EDH_ALAP){
                   use_EDH = true;
                   goto battery;
                 }
@@ -337,14 +360,27 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
 	}
 
         /******************************************************/
-        battery:
+        battery: //Consider only one battery
 	  // Access battery data only if one of following task use EDH scheduling class
           if(use_EDH){
-            Msg_battery my_msg_battery = battery_read_msg();
+            my_msg_battery = battery_read_msg();
         
             if (my_msg_battery.message_integrity == true){
-   	      rt_printf(
+   	      printk(XENO_INFO
                 "chargenow :%d\ncapacity:%d\n",my_msg_battery.chargenow,my_msg_battery.capacity
+	      
+              /*TODO Compute :
+		
+		total_proc_demand 
+		total_WCET_unfinish
+		energy_demand				
+      		energy_produced //In [ti,deadline]		
+
+		slack_time
+		slack_energy
+		total_energy
+	      */	
+		
               );      
   	    }
           }
@@ -359,7 +395,7 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
 	for_each_xnsched_class(p) {
 		thread = p->sched_pick(sched);
 
-		//TODO Alexy : Same as below for !CONFIG_XENO_OPT_SCHED_CLASSES
+		//Alexy : Same as below for !CONFIG_XENO_OPT_SCHED_CLASSES
 
 		if (thread) {
 			set_thread_running(sched, thread);
@@ -369,16 +405,42 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
 
 	return NULL; /* Never executed because of the idle class. */
 #else /* !CONFIG_XENO_OPT_SCHED_CLASSES */
-	thread = xnsched_rt_pick(sched);
-	if (unlikely(thread == NULL))
-		thread = &sched->rootcb;
 
          if (use_EDH){
-           // if we don't have sufficient energy,
-           // need to call the idle task (thread = &sched->rootcb) and wait for the battery to be fill up again
+	   thread = &sched->rootcb;
 	   
-	   //TODO EDF computation
-           WCET = thread->WCET;
+           union xnsched_policy_param dyna_param;   
+           thread->sched_class->sched_getparam(b_thread, &dyna_param);
+
+	   //ED-H Rule n°3:	   
+           if(total_energy == 0 || slack_energy == 0){
+             //Proc. IDLE
+           }
+             
+	   //ED-H Rule n°4: 
+           if(total_energy == my_msg_battery.capacity || slack_time == 0){
+             thread = xnsched_rt_pick(sched);
+               
+             if (unlikely(thread == NULL))
+	       thread = &sched->rootcb;
+           }
+
+	   //ED-H Rule n°5
+	   if(total_energy >0 && total_energy < my_msg_battery.capacity 
+	      && slack_time > 0 && slack_energy > 0){     
+              if(dyna_param.rt.policy == EDH_ALAP){
+                thread = xnsched_rt_pick(sched);
+               
+                if (unlikely(thread == NULL))
+	          thread = &sched->rootcb;
+      
+	      }//else //ASAP => Proc. IDLE
+           }
+		
+         }else{
+           thread = xnsched_rt_pick(sched);
+	   if (unlikely(thread == NULL))
+	     thread = &sched->rootcb;
          }
 
 	set_thread_running(sched, thread);

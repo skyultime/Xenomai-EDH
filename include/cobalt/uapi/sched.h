@@ -90,11 +90,19 @@ enum {
 	sched_quota_set,
 	sched_quota_get,
 };
+
+typedef enum{
+  EDF = 0,
+  EDH_ASAP, //As Soon As Possible
+  EDH_ALAP  //As Late As Possible
+}dyna_policy;
+
 struct __sched_dyna_param {
 	__u64 sched_absolute_deadline;
 	__u64 sched_relative_deadline;
-	int WCET;
-        bool use_EDH;
+	 double WCET;
+	 double WCEC;
+         dyna_policy policy;
 };
 
 struct __sched_config_quota {

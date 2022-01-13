@@ -32,14 +32,16 @@ cobalt_sched_policy_param(union xnsched_policy_param *param,
 	xnticks_t tslice;
 	
 	xnticks_t deadline;
-	int WCET;        
-	bool use_EDH;
+	double WCET;
+	double WCEC;
+        dyna_policy dynamic_policy;
 
 	prio = param_ex->sched_priority;
         
-	deadline = param_ex->sched_u.dyna.sched_absolute_deadline;
-	WCET     = param_ex->sched_u.dyna.WCET;
-        use_EDH  = param_ex->sched_u.dyna.use_EDH;
+	deadline        = param_ex->sched_u.dyna.sched_absolute_deadline;
+	WCET            = param_ex->sched_u.dyna.WCET;
+        WCEC            = param_ex->sched_u.dyna.WCEC;
+        dynamic_policy  = param_ex->sched_u.dyna.policy;
 
 	tslice = XN_INFINITE;
 	policy = u_policy;
@@ -62,9 +64,10 @@ cobalt_sched_policy_param(union xnsched_policy_param *param,
 	}
 	param->rt.prio = prio;
 
-        if(use_EDH){
-          param->rt.WCET = WCET;
-	  param->rt.use_EDH = use_EDH;
+        if(dynamic_policy == EDH_ASAP || dynamic_policy == EDH_ALAP){
+          param->rt.WCET   = WCET;
+	  param->rt.WCEC   = WCEC;
+	  param->rt.policy = dynamic_policy;
 	}
 
 	switch (policy) {

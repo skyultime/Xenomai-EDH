@@ -64,7 +64,8 @@ int copperplate_create_thread(struct corethread_attributes *cta,
 	attr_ex.nonstd.sched_param.sched_u.dyna.sched_absolute_deadline = cta->param_ex.sched_u.dyna.sched_absolute_deadline;
 	attr_ex.nonstd.sched_param.sched_u.dyna.sched_relative_deadline = cta->param_ex.sched_u.dyna.sched_relative_deadline;
 	attr_ex.nonstd.sched_param.sched_u.dyna.WCET = cta->param_ex.sched_u.dyna.WCET;
-	attr_ex.nonstd.sched_param.sched_u.dyna.use_EDH = cta->param_ex.sched_u.dyna.use_EDH;
+	attr_ex.nonstd.sched_param.sched_u.dyna.WCEC = cta->param_ex.sched_u.dyna.WCEC;
+	attr_ex.nonstd.sched_param.sched_u.dyna.policy = cta->param_ex.sched_u.dyna.policy;
 
 	ret = -pthread_create_ex(ptid_r, &attr_ex, thread_trampoline, cta);
 	pthread_attr_destroy_ex(&attr_ex);

@@ -641,7 +641,7 @@ static inline bool xnsched_setparam(struct xnthread *thread,
 }
 
 static inline void xnsched_getparam(struct xnthread *thread,
-				    union xnsched_policy_param *p)
+				     union xnsched_policy_param *p)
 {
 	struct xnsched_class *sched_class = thread->sched_class;
 
