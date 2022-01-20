@@ -367,21 +367,26 @@ struct xnthread *xnsched_pick_next(struct xnsched *sched)
         
             if (my_msg_battery.message_integrity == true){
    	      printk(XENO_INFO
-                "chargenow :%d\ncapacity:%d\n",my_msg_battery.chargenow,my_msg_battery.capacity
-	      
-              /*TODO Compute :
-		
-		total_proc_demand 
-		total_WCET_unfinish
-		energy_demand				
-      		energy_produced //In [ti,deadline]		
+                "chargenow :%d\ncapacity:%d\n",my_msg_battery.chargenow,my_msg_battery.capacity);
 
-		slack_time
-		slack_energy
-		total_energy
-	      */	
+	      list_for_each_entry(b_thread, q, rlink) {
+                if (unlikely(b_thread->sched_class == &xnsched_class_dyna)){
+                 
+                  /*TODO Compute for each thread:
 		
-              );      
+		  1) slack_time
+		  2) slack_energy
+	          
+                  using : */
+		  param.rt.WCET;
+                  param.rt.WCEC;
+
+                  my_msg_battery.chargenow;
+		  my_msg_battery.battery_size;
+		  my_msg_battery.energy_production;
+		}	  
+              }	      
+     
   	    }
           }
   
