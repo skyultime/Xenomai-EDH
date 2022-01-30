@@ -23,6 +23,11 @@
 #define XDDP_PORT 0     /* [0..CONFIG-XENO_OPT_PIPE_NRDEV - 1] */
 #define MAX_BATT_READ_MSG_LENGTH 27
 
+static void rt_batt_loop(void *arg);
+
+/* Thread for transmission */
+static rtdm_task_t rt_batt_task;
+
 static int ufd = 0;
 
 Msg_battery battery_read_msg(void)
@@ -79,27 +84,40 @@ Msg_battery battery_read_msg(void)
 	  battery_message.message_integrity = false;
 	}
      
-
     return battery_message;
 }
 
 int batt_init (void){ 	
 
-    //Alternative: Access to /dev/xeno_rtipc    
+    int err  =0;
+
+    /* Init the task */
+    err = rtdm_task_init(&rt_batt_task, "rt_batt_init",
+     	rt_batt_loop, 0, RTDM_TASK_LOWEST_PRIORITY,
+     	0);
+
+    printk(XENO_INFO "batt_init OK\n");	
+	
+    return err;
+}
+
+void rt_batt_loop(void *arg){
+
     struct sockaddr_ipc saddr;
     int ret;
     size_t poolsz;
-        
+
+    printk("XENO_WARNING Enter rt_batt_loop section\n");    
+
     /*
-    * Get a datagram socket to bind to the RT endpoint. Each
-    * endpoint is represented by a port number within the XDDP
-    * protocol namespace.
-    */
+     * Get a datagram socket to bind to the RT endpoint. Each
+     * endpoint is represented by a port number within the XDDP
+     * protocol namespace.
+     */
         
     ufd = __rtdm_dev_socket(AF_RTIPC, SOCK_DGRAM, IPCPROTO_XDDP);
     if (ufd < 0) {
-            printk("XENO_WARNING __rtdm_dev_socket failed\n");
-            return -1;
+		printk("XENO_WARNING __rtdm_dev_socket failed\n");
     }
     /*
      * Set a local 16k pool for the RT endpoint. Memory needed to
@@ -125,17 +143,16 @@ int batt_init (void){
 	if(ret < 0)
 	{
 	  printk(XENO_INFO "bind error\n");
-	  return 1;
 	}else{
 	  printk(XENO_INFO "bind OK on port %d\n",XDDP_PORT);
 	}
 
-	return 0;
 }
 
 int batt_deinit(void){
 
   rtdm_close(ufd);
+  rtdm_task_destroy(&rt_batt_task);
   printk(XENO_INFO "Destroy socket...\n");
   
   return 0;

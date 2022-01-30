@@ -201,14 +201,20 @@ static void xnsched_init(struct xnsched *sched, int cpu)
 	 * postponed to xnintr_irq_handler(), as part of the interrupt
 	 * exit code.
 	 */
+
+	/* clock handler RT*/
 	xntimer_init(&sched->htimer, &nkclock, NULL,
 		     sched, XNTIMER_IGRAVITY);
+	xntimer_set_name(&sched->htimer, htimer_name);	
 	xntimer_set_priority(&sched->htimer, XNTIMER_LOPRIO);
-	xntimer_set_name(&sched->htimer, htimer_name);
+	
+
+	/* Round robin RT (secondary domain)*/
 	xntimer_init(&sched->rrbtimer, &nkclock, roundrobin_handler,
 		     sched, XNTIMER_IGRAVITY);
 	xntimer_set_name(&sched->rrbtimer, rrbtimer_name);
 	xntimer_set_priority(&sched->rrbtimer, XNTIMER_LOPRIO);
+
 
 	xnstat_exectime_set_current(sched, &sched->rootcb.stat.account);
 #ifdef CONFIG_XENO_ARCH_FPU
@@ -237,11 +243,13 @@ void xnsched_init_all(void)
 		xnsched_init(sched, cpu);
 	}
 
+
 	pipeline_request_resched_ipi(__xnsched_run_handler);
 }
 
 static void xnsched_destroy(struct xnsched *sched)
 {
+
 	xntimer_destroy(&sched->htimer);
 	xntimer_destroy(&sched->rrbtimer);
 	xntimer_destroy(&sched->rootcb.ptimer);

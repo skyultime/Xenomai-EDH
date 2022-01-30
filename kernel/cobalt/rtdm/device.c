@@ -464,7 +464,10 @@ int rtdm_dev_register(struct rtdm_device *dev)
 		if (IS_ERR(kdev)) {
 			xnregistry_remove(dev->named.handle);
 			ret = PTR_ERR(kdev);
+			printk(XENO_WARNING "device_create 1: Failed (%s,%d)\n",kbasename(dev->label),minor);
 			goto fail2;
+		}else{
+                  	printk(XENO_INFO "device_create 1: %s (minor:%d)\n",kbasename(dev->label),minor);
 		}
 		__set_bit(minor, drv->minor_map);
 	} else {
@@ -487,7 +490,10 @@ int rtdm_dev_register(struct rtdm_device *dev)
 				     dev, dev->name);
 		if (IS_ERR(kdev)) {
 			ret = PTR_ERR(kdev);
+                        printk(XENO_WARNING "device_create 2: Failed (%s,%d)\n",dev->name,minor);
 			goto fail2;
+		}else{
+                  printk(XENO_INFO "device_create 2: %s (minor:%d)\n",dev->name,minor);
 		}
 
 		id = get_proto_id(drv->protocol_family, drv->socket_type);
@@ -506,6 +512,7 @@ int rtdm_dev_register(struct rtdm_device *dev)
 
 	trace_cobalt_device_register(dev);
 
+	printk(XENO_INFO "rtdm_dev_register OK\n");
 	return 0;
 fail:
 	if (kdev)

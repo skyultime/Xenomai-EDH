@@ -244,20 +244,26 @@ static int __init xenomai_init(void)
 
 	rtdm_fd_init();
 
-        //Init batt module
-        ret = batt_init();
-        if (ret != 0)
-                goto cleanup_batt;
-
+        printk(XENO_INFO "Init battery module\n");
+	//Init batt module         
+	ret = batt_init();
+          
+	if (ret!=0){
+          printk("XENO_ERROR batt_init call failed\n");
+          goto cleanup_batt;
+        }
+        
 	printk(XENO_INFO "Cobalt v%s %s%s%s%s\n",
 	       XENO_VERSION_STRING,
 	       boot_debug_notice,
 	       boot_lat_trace_notice,
 	       boot_evt_trace_notice,
 	       boot_state_notice);
-
+          
 	return 0;
 
+cleanup_batt:
+	batt_deinit();
 cleanup_rtdm:
 	rtdm_cleanup();
 cleanup_sys:
@@ -270,8 +276,6 @@ cleanup_mach:
 	pipeline_cleanup();
 cleanup_proc:
 	xnprocfs_cleanup_tree();
-cleanup_batt:
-        batt_deinit();
 fail:
 	set_realtime_core_state(COBALT_STATE_DISABLED);
 	printk(XENO_ERR "init failed, code %d\n", ret);

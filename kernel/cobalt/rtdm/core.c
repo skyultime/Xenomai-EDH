@@ -213,6 +213,7 @@ int __rtdm_dev_socket(int protocol_family, int socket_type,
 	int ufd, ret;
 
 	secondary_mode_only();
+	printk(XENO_WARNING "dev_socket => Enter Secondary mode\n");
 
 	dev = __rtdm_get_protodev(protocol_family, socket_type);
 	if (dev == NULL)
@@ -237,6 +238,8 @@ int __rtdm_dev_socket(int protocol_family, int socket_type,
 		if (ret < 0)
 			goto fail_socket;
 	}
+
+	printk(XENO_WARNING "dev_socket => Prepare rtdm_device_new_fd in __rtdm_dev_socket\n");	
 
 	ret = rtdm_device_new_fd(&context->fd, ufd, context->device);
 	if (ret < 0)
